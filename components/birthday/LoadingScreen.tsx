@@ -21,10 +21,18 @@ export function LoadingScreen({ onReady }: { onReady: () => void }) {
     return () => cancelAnimationFrame(frame);
   }, [onReady]);
 
+  const status = progress < 28
+    ? 'Đang chuẩn bị ánh sao...'
+    : progress < 56
+      ? 'Đang thắp nến...'
+      : progress < 84
+        ? 'Đang gói quà...'
+        : 'Sắp xong rồi...';
+
   return (
     <output className="loading-screen" aria-live="polite">
       <span className="loading-star" aria-hidden="true">✦</span>
-      <p>Đang chuẩn bị một điều đặc biệt...</p>
+      <p>{status}</p>
       <div className="loading-track"><span style={{ width: `${progress}%` }} /></div>
       <span className="loading-value">{progress}%</span>
     </output>

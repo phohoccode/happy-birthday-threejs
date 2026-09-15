@@ -5,9 +5,9 @@ export type Memory = {
 };
 
 export const birthdayConfig = {
-  name: 'An Nhiên',
-  birthday: '20/09',
-  age: 20,
+  name: 'Quốc Việt',
+  birthday: '15/09',
+  age: 22,
   intro: 'Có một điều nhỏ muốn gửi đến bạn...',
   wishes: [
     'Chúc bạn luôn dịu dàng với chính mình, ngay cả trong những ngày mọi thứ chẳng đi theo kế hoạch.',
@@ -34,6 +34,14 @@ export const birthdayConfig = {
     },
   ] satisfies Memory[],
   music: '/music/birthday.mp3',
+  cinematicTimeline: {
+    portal: 0,
+    warp: 2.7,
+    worldReveal: 6.5,
+    cakeReveal: 9.3,
+    candle: 11.2,
+    fireworks: 14.4,
+  },
 } as const;
 
 export type BirthdayConfig = typeof birthdayConfig;

@@ -12,7 +12,8 @@ export function useDeviceQuality(): DeviceQuality {
       const cores = navigator.hardwareConcurrency || 4;
       const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
       const narrow = window.matchMedia('(max-width: 767px)').matches;
-      setQuality(narrow || cores <= 4 || memory <= 4 ? 'low' : cores >= 8 && memory >= 8 ? 'high' : 'medium');
+      const denseDisplay = window.devicePixelRatio > 2.25;
+      setQuality(narrow || denseDisplay || cores <= 4 || memory <= 4 ? 'low' : cores >= 8 && memory >= 8 ? 'high' : 'medium');
     });
     return () => cancelAnimationFrame(frame);
   }, []);

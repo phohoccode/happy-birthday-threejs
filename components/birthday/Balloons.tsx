@@ -40,6 +40,9 @@ export function Balloons({ reducedMotion }: { reducedMotion: boolean }) {
       <Balloon position={[3.4, 1.2, -2]} color="#e99ab8" scale={1} reducedMotion={reducedMotion} />
       <Balloon position={[-4.1, 2.5, -3]} color="#d6ad58" scale={0.62} reducedMotion={reducedMotion} />
       <Balloon position={[4.3, -0.9, -3]} color="#7668bd" scale={0.7} reducedMotion={reducedMotion} />
+      <Balloon position={[-5.8, -1.1, 1.4]} color="#c17897" scale={1.28} reducedMotion={reducedMotion} />
+      <Balloon position={[5.6, 2.8, 0.8]} color="#8e78cd" scale={1.18} reducedMotion={reducedMotion} />
+      <Balloon position={[1.9, 3.7, -5]} color="#c7963d" scale={0.48} reducedMotion={reducedMotion} />
     </group>
   );
 }

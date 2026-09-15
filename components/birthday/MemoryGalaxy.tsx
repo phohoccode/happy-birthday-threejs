@@ -23,13 +23,17 @@ export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
   }, [selected, step]);
 
   return (
-    <section className="memories-section content-section" id="memories" aria-labelledby="memories-title">
+    <section className="memories-section content-section" id="memories" data-cinematic-scene="memory" aria-labelledby="memories-title">
       <div className="section-heading">
         <span>02 · Những mảnh thời gian</span>
         <h2 id="memories-title">Our Memories</h2>
         <p>Một dải ký ức nhỏ, vẫn đang lấp lánh ở đâu đó.</p>
       </div>
       <div className="memory-orbit">
+        <svg className="constellation-lines" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M120 270 C 290 70, 410 95, 500 190 S 760 240, 885 360" />
+          <path d="M500 190 C 510 320, 420 410, 350 520" />
+        </svg>
         {memories.map((memory, index) => (
           <button
             type="button"
@@ -43,6 +47,7 @@ export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
           </button>
         ))}
       </div>
+      <div className="constellation-heart" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /><span /></div>
       <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null); }}>
         {selected !== null ? (
           <DialogContent

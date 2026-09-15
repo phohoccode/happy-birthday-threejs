@@ -54,5 +54,29 @@ export function useAudio(src: string) {
     }
   }, [available, play]);
 
-  return { playing, available, play, toggle };
+  const fadeTo = useCallback((target: number, duration = 500) => {
+    const audio = audioRef.current;
+    if (!audio) return () => undefined;
+    const from = audio.volume;
+    const started = performance.now();
+    let timer = 0;
+    timer = window.setInterval(() => {
+      const progress = Math.min(1, (performance.now() - started) / Math.max(1, duration));
+      audio.volume = from + (Math.max(0, Math.min(1, target)) - from) * progress;
+      if (progress >= 1) window.clearInterval(timer);
+    }, 16);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const reset = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = 0.35;
+    playingRef.current = false;
+    setPlaying(false);
+  }, []);
+
+  return { playing, available, play, toggle, fadeTo, reset };
 }

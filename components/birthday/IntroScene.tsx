@@ -1,21 +1,22 @@
 'use client';
 
-import { Gift, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { motion } from 'framer-motion';
 
 export function IntroScene({ name, intro, onOpen }: { name: string; intro: string; onOpen: () => void }) {
   return (
     <div className="intro-screen">
-      <div className="intro-orbit" aria-hidden="true"><span /><span /><span /></div>
-      <div className="intro-copy">
-        <Sparkles className="intro-mark" aria-hidden="true" />
-        <p>{intro.replace('bạn', name)}</p>
-        <h1>Bạn có muốn mở nó không?</h1>
-        <Button className="primary-cta" size="lg" onClick={onOpen}>
-          <Gift aria-hidden="true" /> Mở món quà
-        </Button>
-        <span className="intro-note">Chạm để bắt đầu trải nghiệm</span>
-      </div>
+      <div className="intro-light-spill" aria-hidden="true" />
+      <motion.p className="spark-message" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 1.1 }}>
+        {intro.replace('nhỏ muốn gửi đến', 'đặc biệt đang chờ')}
+      </motion.p>
+      <button className="magic-spark" type="button" onClick={onOpen} aria-label={`Mở trải nghiệm sinh nhật dành cho ${name}`}>
+        <span className="spark-core" />
+        <span className="spark-orbit spark-orbit-one"><i /><i /><i /></span>
+        <span className="spark-orbit spark-orbit-two"><i /><i /></span>
+      </button>
+      <motion.span className="spark-instruction" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.45, duration: 1 }}>
+        Chạm vào ánh sáng.
+      </motion.span>
     </div>
   );
 }

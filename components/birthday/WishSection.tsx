@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 
 export function WishSection({ name, wishes }: { name: string; wishes: readonly string[] }) {
   return (
-    <section className="wish-section content-section" aria-labelledby="wish-title">
+    <section className="wish-section content-section" data-cinematic-scene="wish" aria-labelledby="wish-title">
       <div className="wish-card">
         <div className="wish-glint" aria-hidden="true" />
         <span className="wish-kicker">Một lá thư dành riêng cho bạn</span>
