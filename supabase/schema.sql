@@ -79,7 +79,7 @@ begin
   if recipient is null then raise exception 'Birthday page not found or access denied'; end if;
   if existing_slug is null then
     loop
-      generated_slug := trim(both '-' from lower(regexp_replace(public.unaccent_name(recipient), '[^a-z0-9]+', '-', 'g'))) || '-' || lower(encode(gen_random_bytes(3), 'hex'));
+      generated_slug := trim(both '-' from regexp_replace(lower(public.unaccent_name(recipient)), '[^a-z0-9]+', '-', 'g')) || '-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 6);
       exit when not exists (select 1 from public.birthday_pages where slug = generated_slug);
     end loop;
   else
