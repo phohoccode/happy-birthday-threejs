@@ -2,10 +2,11 @@
 
 import { Environment, Sparkles, Stars } from '@react-three/drei';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Suspense, useRef } from 'react';
+import { memo, Suspense, useRef } from 'react';
 import { Color } from 'three';
 import type { AmbientLight, DirectionalLight, Fog, PointLight } from 'three';
 import type { DeviceQuality } from '@/hooks/useDeviceQuality';
+import type { BirthdayEffects } from '@/config/birthday';
 import { Aurora } from './Aurora';
 import { Balloons } from './Balloons';
 import { CameraDirector } from './CameraDirector';
@@ -48,9 +49,11 @@ type CosmicCanvasProps = {
   quality: DeviceQuality;
   reducedMotion: boolean;
   onSlow: () => void;
+  effects: BirthdayEffects;
+  primaryColor: string;
 };
 
-export function CosmicCanvas({ scene, candlesOut, blowPhase, age, quality, reducedMotion, onSlow }: CosmicCanvasProps) {
+export const CosmicCanvas = memo(function CosmicCanvas({ scene, candlesOut, blowPhase, age, quality, reducedMotion, onSlow, effects, primaryColor }: CosmicCanvasProps) {
   const starCount = reducedMotion ? 350 : quality === 'high' ? 1900 : quality === 'medium' ? 1050 : 520;
   const isWorld = ['world', 'ceremony', 'blow', 'fireworks', 'finale'].includes(scene);
   const isQuietGalaxy = scene === 'memory' || scene === 'wish' || scene === 'gift';
@@ -62,14 +65,14 @@ export function CosmicCanvas({ scene, candlesOut, blowPhase, age, quality, reduc
         {scene === 'portal' ? <Portal reducedMotion={reducedMotion} /> : null}
         {scene === 'warp' ? <WarpTunnel count={quality === 'high' ? 1250 : quality === 'medium' ? 760 : 380} reducedMotion={reducedMotion} /> : null}
         {scene !== 'darkness' && scene !== 'warp' ? <Stars radius={60} depth={30} count={isQuietGalaxy ? Math.round(starCount * 0.65) : starCount} factor={2.4} saturation={0.2} fade speed={reducedMotion ? 0 : 0.35} /> : null}
-        {isWorld || isQuietGalaxy ? <Sparkles count={quality === 'low' ? 30 : 68} scale={[10, 7, 5]} size={1.7} speed={reducedMotion ? 0 : 0.16} color="#f7d774" opacity={isQuietGalaxy ? 0.18 : 0.32} /> : null}
-        {isWorld ? <><group scale={quality === 'low' ? 0.78 : 1}><Cake age={age} candlesOut={candlesOut} ceremony={scene === 'ceremony' || scene === 'blow' || scene === 'fireworks' || scene === 'finale'} blowPhase={blowPhase} reducedMotion={reducedMotion} /></group><Balloons reducedMotion={reducedMotion} /><WorldDecor reducedMotion={reducedMotion} />{quality !== 'low' ? <Aurora reducedMotion={reducedMotion} /> : null}</> : null}
-        {scene === 'memory' ? <MemoryUniverse3D reducedMotion={reducedMotion} /> : null}
-        <Fireworks active={showFireworks} finale={scene === 'finale'} reducedMotion={reducedMotion} />
+        {isWorld || isQuietGalaxy ? <Sparkles count={quality === 'low' ? 30 : 68} scale={[10, 7, 5]} size={1.7} speed={reducedMotion ? 0 : 0.16} color={primaryColor} opacity={isQuietGalaxy ? 0.18 : 0.32} /> : null}
+        {isWorld ? <><group scale={quality === 'low' ? 0.78 : 1}><Cake age={age} candlesOut={candlesOut} ceremony={scene === 'ceremony' || scene === 'blow' || scene === 'fireworks' || scene === 'finale'} blowPhase={blowPhase} reducedMotion={reducedMotion} /></group>{effects.balloons ? <Balloons reducedMotion={reducedMotion} /> : null}<WorldDecor reducedMotion={reducedMotion} />{effects.aurora && quality !== 'low' ? <Aurora reducedMotion={reducedMotion} /> : null}</> : null}
+        {effects.memoryGalaxy && scene === 'memory' ? <MemoryUniverse3D reducedMotion={reducedMotion} /> : null}
+        <Fireworks active={effects.fireworks && showFireworks} finale={scene === 'finale'} reducedMotion={reducedMotion} />
         {quality === 'high' && isWorld ? <Environment preset="night" /> : null}
       </Suspense>
       <CameraDirector scene={scene} reducedMotion={reducedMotion} />
       <FpsGuard onSlow={onSlow} />
     </Canvas>
   );
-}
+});

@@ -29,7 +29,7 @@ export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
         <h2 id="memories-title">Our Memories</h2>
         <p>Một dải ký ức nhỏ, vẫn đang lấp lánh ở đâu đó.</p>
       </div>
-      <div className="memory-orbit">
+      <div className={`memory-orbit ${memories.length > 3 ? 'is-gallery' : ''}`}>
         <svg className="constellation-lines" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
           <path d="M120 270 C 290 70, 410 95, 500 190 S 760 240, 885 360" />
           <path d="M500 190 C 510 320, 420 410, 350 520" />

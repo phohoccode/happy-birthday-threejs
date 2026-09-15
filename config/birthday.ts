@@ -1,14 +1,65 @@
+export const BIRTHDAY_TEMPLATES = [
+  { id: 'midnight-wish', name: 'Midnight Wish' },
+  { id: 'pink-dream', name: 'Pink Dream' },
+  { id: 'golden-night', name: 'Golden Night' },
+  { id: 'galaxy-birthday', name: 'Galaxy Birthday' },
+  { id: 'minimal-birthday', name: 'Minimal Birthday' },
+] as const;
+
+export type BirthdayTemplateId = (typeof BIRTHDAY_TEMPLATES)[number]['id'];
+
 export type Memory = {
+  id: string;
   src: string;
+  storagePath?: string;
   alt: string;
   caption: string;
 };
 
-export const birthdayConfig = {
-  name: 'Quốc Việt',
-  birthday: '15/09',
+export type BirthdayEffects = {
+  balloons: boolean;
+  fireworks: boolean;
+  confetti: boolean;
+  aurora: boolean;
+  memoryGalaxy: boolean;
+  giftScene: boolean;
+};
+
+export type BirthdayConfig = {
+  recipientName: string;
+  age: number;
+  birthday: string;
+  title: string;
+  intro: string;
+  wishes: string[];
+  finalMessage: string;
+  secretMessage: string;
+  primaryColor: string;
+  theme: BirthdayTemplateId;
+  memories: Memory[];
+  music: {
+    src: string;
+    storagePath?: string;
+    name: string;
+    volume: number;
+  } | null;
+  effects: BirthdayEffects;
+  cinematicTimeline: {
+    portal: number;
+    warp: number;
+    worldReveal: number;
+    cakeReveal: number;
+    candle: number;
+    fireworks: number;
+  };
+};
+
+export const birthdayConfig: BirthdayConfig = {
+  recipientName: 'Quốc Việt',
   age: 22,
-  intro: 'Có một điều nhỏ muốn gửi đến bạn...',
+  birthday: '15/09',
+  title: 'Một bầu trời dành riêng cho bạn',
+  intro: 'Có một điều đặc biệt đang chờ bạn...',
   wishes: [
     'Chúc bạn luôn dịu dàng với chính mình, ngay cả trong những ngày mọi thứ chẳng đi theo kế hoạch.',
     'Chúc những điều bạn đang ấp ủ sẽ tìm được đúng thời điểm để nở hoa.',
@@ -16,24 +67,41 @@ export const birthdayConfig = {
   ],
   finalMessage: 'Cảm ơn vì đã xuất hiện trên thế giới này.',
   secretMessage: 'Món quà đẹp nhất của hôm nay, chính là nụ cười của bạn.',
+  primaryColor: '#f7d774',
+  theme: 'midnight-wish',
   memories: [
     {
+      id: 'rooftop',
       src: '/memories/rooftop.png',
       alt: 'Một buổi tối ấm áp dưới ánh đèn trên sân thượng',
       caption: 'Những buổi tối chẳng cần vội vàng.',
     },
     {
+      id: 'shoreline',
       src: '/memories/shoreline.png',
       alt: 'Hai người bạn đi bên nhau trên bờ biển lúc hoàng hôn',
       caption: 'Những con đường đẹp hơn khi mình đi cùng nhau.',
     },
     {
+      id: 'candlelight',
       src: '/memories/candlelight.png',
       alt: 'Một chiếc bàn kỷ niệm dưới ánh nến',
       caption: 'Những điều nhỏ bé mà mình sẽ nhớ thật lâu.',
     },
-  ] satisfies Memory[],
-  music: '/music/birthday.mp3',
+  ],
+  music: {
+    src: '/music/birthday.mp3',
+    name: 'Birthday melody',
+    volume: 0.35,
+  },
+  effects: {
+    balloons: true,
+    fireworks: true,
+    confetti: true,
+    aurora: true,
+    memoryGalaxy: true,
+    giftScene: true,
+  },
   cinematicTimeline: {
     portal: 0,
     warp: 2.7,
@@ -42,6 +110,8 @@ export const birthdayConfig = {
     candle: 11.2,
     fireworks: 14.4,
   },
-} as const;
+};
 
-export type BirthdayConfig = typeof birthdayConfig;
+export function createBirthdayConfig(): BirthdayConfig {
+  return structuredClone(birthdayConfig);
+}

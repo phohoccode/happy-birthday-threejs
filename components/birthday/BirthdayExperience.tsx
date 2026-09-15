@@ -2,9 +2,9 @@
 
 import { motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Button } from '@/components/ui/button';
-import { birthdayConfig } from '@/config/birthday';
+import type { BirthdayConfig } from '@/config/birthday';
 import { useAudio } from '@/hooks/useAudio';
 import { useDeviceQuality, type DeviceQuality } from '@/hooks/useDeviceQuality';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
@@ -27,11 +27,11 @@ const STORY = [
 ];
 const LazyCosmicCanvas = lazy(() => import('./CosmicCanvas').then((module) => ({ default: module.CosmicCanvas })));
 
-export function BirthdayExperience() {
+export function BirthdayExperience({ config, previewMode = false }: { config: BirthdayConfig; previewMode?: boolean }) {
   const [hydrated, setHydrated] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [opened, setOpened] = useState(false);
-  const [scene, setScene] = useState<CinematicScene>('darkness');
+  const [loading, setLoading] = useState(!previewMode);
+  const [opened, setOpened] = useState(previewMode);
+  const [scene, setScene] = useState<CinematicScene>(previewMode ? 'world' : 'darkness');
   const [ceremonyReady, setCeremonyReady] = useState(false);
   const [candlesOut, setCandlesOut] = useState(false);
   const [blowPhase, setBlowPhase] = useState<'idle' | 'gust' | 'smoke' | 'boom'>('idle');
@@ -39,7 +39,7 @@ export function BirthdayExperience() {
   const detectedQuality = useDeviceQuality();
   const [quality, setQuality] = useState<DeviceQuality>('medium');
   const reducedMotion = useReducedMotion();
-  const audio = useAudio(birthdayConfig.music);
+  const audio = useAudio(config.music?.src, config.music?.volume ?? 0.35);
   const { fadeTo, play, reset, toggle } = audio;
   const timelineTimers = useRef<number[]>([]);
   const finaleBurstDone = useRef(false);
@@ -58,7 +58,7 @@ export function BirthdayExperience() {
     setOpened(true);
     setScene('portal');
     document.body.classList.add('experience-open');
-    const timeline = birthdayConfig.cinematicTimeline;
+    const timeline = config.cinematicTimeline;
     later(() => setScene('warp'), timeline.warp * 1000);
     later(() => setScene('world'), timeline.worldReveal * 1000);
     later(() => setScene('ceremony'), timeline.cakeReveal * 1000);
@@ -125,17 +125,19 @@ export function BirthdayExperience() {
 
   if (!hydrated) return <main className="birthday-experience" suppressHydrationWarning />;
 
+  const themeStyle = { '--primary': config.primaryColor, '--gold': config.primaryColor, '--ring': config.primaryColor } as CSSProperties;
+
   return (
-    <main className={`birthday-experience scene-${scene}`}>
+    <main className={`birthday-experience scene-${scene}`} data-theme={config.theme} style={themeStyle}>
       <div className={`world-layer ${opened ? 'is-open' : ''}`} aria-hidden="true">
-        {!loading ? <Suspense fallback={null}><LazyCosmicCanvas scene={scene} candlesOut={candlesOut} blowPhase={blowPhase} age={birthdayConfig.age} quality={quality} reducedMotion={reducedMotion} onSlow={downgradeQuality} /></Suspense> : null}
+        {!loading ? <Suspense fallback={null}><LazyCosmicCanvas scene={scene} candlesOut={candlesOut} blowPhase={blowPhase} age={config.age} quality={quality} reducedMotion={reducedMotion} onSlow={downgradeQuality} effects={config.effects} primaryColor={config.primaryColor} /></Suspense> : null}
       </div>
       <div className="ambient-vignette" aria-hidden="true" />
-      <MagicTrailCanvas active={!loading && opened && !reducedMotion} />
+      <MagicTrailCanvas active={!loading && opened && !reducedMotion && !previewMode} />
       {loading ? <LoadingScreen onReady={finishLoading} /> : null}
-      {!loading && !opened ? <IntroScene name={birthdayConfig.name} intro={birthdayConfig.intro} onOpen={openExperience} /> : null}
-      {opened ? <div className="experience-controls"><MusicController playing={audio.playing} available={audio.available} onToggle={toggle} /><QualityController quality={quality} onChange={setQuality} /></div> : null}
-      <ConfettiCanvas burstKey={burstKey} />
+      {!loading && !opened ? <IntroScene name={config.recipientName} intro={config.intro} onOpen={openExperience} /> : null}
+      {opened && !previewMode ? <div className="experience-controls"><MusicController playing={audio.playing} available={audio.available} onToggle={toggle} /><QualityController quality={quality} onChange={setQuality} /></div> : null}
+      {config.effects.confetti ? <ConfettiCanvas burstKey={burstKey} /> : null}
 
       {opened && (scene === 'portal' || scene === 'warp') ? (
         <div className={`opening-transition ${scene}`} aria-live="polite">
@@ -146,23 +148,22 @@ export function BirthdayExperience() {
 
       <section className="hero-section content-section" aria-labelledby="hero-title">
         <div className="hero-copy">
-          <motion.span initial={{ opacity: 0 }} animate={scene === 'world' || scene === 'ceremony' ? { opacity: 1 } : { opacity: 0 }} transition={{ delay: 0.2 }} className="eyebrow">{birthdayConfig.birthday} · một ngày thật đẹp</motion.span>
+          <motion.span initial={{ opacity: 0 }} animate={scene === 'world' || scene === 'ceremony' ? { opacity: 1 } : { opacity: 0 }} transition={{ delay: 0.2 }} className="eyebrow">{config.birthday} · một ngày thật đẹp</motion.span>
           <motion.h1 id="hero-title" initial={{ opacity: 0, y: 30, filter: 'blur(10px)' }} animate={scene === 'world' || scene === 'ceremony' ? { opacity: 1, y: 0, filter: 'blur(0px)' } : { opacity: 0, y: 30, filter: 'blur(10px)' }} transition={{ duration: 1.15 }}>
-            <span>Happy Birthday</span><em>{birthdayConfig.name}</em>
+            <span>Happy Birthday</span><em>{config.recipientName}</em>
           </motion.h1>
-          <motion.p initial={{ opacity: 0 }} animate={scene === 'world' || scene === 'ceremony' ? { opacity: 1 } : { opacity: 0 }} transition={{ delay: 0.65 }}>Hôm nay, mọi vì sao đều sáng hơn một chút.</motion.p>
+          <motion.p initial={{ opacity: 0 }} animate={scene === 'world' || scene === 'ceremony' ? { opacity: 1 } : { opacity: 0 }} transition={{ delay: 0.65 }}>{config.intro}</motion.p>
         </div>
         {scene === 'ceremony' || scene === 'blow' ? <div className={`candle-prompt ${ceremonyReady ? 'is-ready' : ''}`}><span><Sparkles aria-hidden="true" /> {ceremonyReady ? 'Và ước một điều ✨' : 'Nhắm mắt lại một chút...'}</span>{ceremonyReady ? <Button className="primary-cta" size="lg" onClick={blowCandles} disabled={blowPhase !== 'idle'}>{candlesOut ? 'Điều ước đã được gửi' : 'Thổi nến'}</Button> : null}</div> : null}
       </section>
 
-      {scene === 'fireworks' ? <div className="celebration-overlay" aria-live="polite"><span>HAPPY BIRTHDAY</span><h2>{birthdayConfig.name}</h2><p>Điều ước đã bay vào vũ trụ.</p><button type="button" onClick={reviewMemories}>Đi vào những ký ức <i /></button></div> : null}
-
-      {candlesOut ? <section className="firework-message content-section" data-cinematic-scene="fireworks" aria-label="Bản giao hưởng pháo hoa"><span>FIREWORK SYMPHONY</span><h2>Một bầu trời dành riêng cho bạn.</h2><p>Trái · giữa · phải · rồi cả bầu trời cùng bừng sáng.</p></section> : null}
-      <MemoryGalaxy memories={birthdayConfig.memories} />
-      <GiftBox message={birthdayConfig.secretMessage} onOpen={() => { setBurstKey((value) => value + 1); navigator.vibrate?.(24); }} />
+      {scene === 'fireworks' ? <div className="celebration-overlay" aria-live="polite"><span>HAPPY BIRTHDAY</span><h2>{config.recipientName}</h2><p>Điều ước đã bay vào vũ trụ.</p><button type="button" onClick={reviewMemories}>Đi vào những ký ức <i /></button></div> : null}
+      {candlesOut && config.effects.fireworks ? <section className="firework-message content-section" data-cinematic-scene="fireworks" aria-label="Bản giao hưởng pháo hoa"><span>FIREWORK SYMPHONY</span><h2>{config.title}</h2><p>Trái · giữa · phải · rồi cả bầu trời cùng bừng sáng.</p></section> : null}
+      {config.effects.memoryGalaxy ? <MemoryGalaxy memories={config.memories} /> : null}
+      {config.effects.giftScene ? <GiftBox message={config.secretMessage} onOpen={() => { setBurstKey((value) => value + 1); navigator.vibrate?.(24); }} /> : null}
       <section className="story-section content-section" data-cinematic-scene="wish" aria-label="Câu chuyện dành cho bạn">{STORY.map((line, index) => <motion.p key={line} initial={{ opacity: 0.08, y: 36, filter: 'blur(10px)', scale: 0.97 }} whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)', scale: 1 }} viewport={{ amount: 0.72 }} transition={{ duration: reducedMotion ? 0.1 : 0.85, ease: [0.65, 0, 0.35, 1] }} className={index === STORY.length - 1 ? 'story-accent' : ''}>{line}</motion.p>)}</section>
-      <WishSection name={birthdayConfig.name} wishes={birthdayConfig.wishes} />
-      <FinalScene name={birthdayConfig.name} onReplay={resetExperience} onMemories={reviewMemories} />
+      <WishSection name={config.recipientName} wishes={config.wishes} />
+      <FinalScene name={config.recipientName} message={config.finalMessage} onReplay={resetExperience} onMemories={reviewMemories} />
     </main>
   );
 }

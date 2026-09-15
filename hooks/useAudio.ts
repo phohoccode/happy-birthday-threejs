@@ -2,18 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export function useAudio(src: string) {
+export function useAudio(src?: string, volume = 0.35) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playingRef = useRef(false);
   const [playing, setPlaying] = useState(false);
-  const [available, setAvailable] = useState(true);
+  const [failedSrc, setFailedSrc] = useState<string | undefined>();
+  const available = Boolean(src) && failedSrc !== src;
 
   useEffect(() => {
+    if (!src) {
+      audioRef.current = null;
+      return;
+    }
     const audio = new Audio(src);
     audio.loop = true;
     audio.volume = 0.35;
     audio.preload = 'none';
-    const handleError = () => setAvailable(false);
+    const handleError = () => setFailedSrc(src);
     audio.addEventListener('error', handleError);
     audioRef.current = audio;
 
@@ -31,6 +36,10 @@ export function useAudio(src: string) {
     };
   }, [src]);
 
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = Math.max(0, Math.min(1, volume));
+  }, [volume]);
+
   const play = useCallback(async () => {
     if (!audioRef.current || !available) return;
     try {
@@ -38,9 +47,9 @@ export function useAudio(src: string) {
       playingRef.current = true;
       setPlaying(true);
     } catch {
-      setAvailable(false);
+      setFailedSrc(src);
     }
-  }, [available]);
+  }, [available, src]);
 
   const toggle = useCallback(async () => {
     const audio = audioRef.current;
@@ -73,10 +82,10 @@ export function useAudio(src: string) {
     if (!audio) return;
     audio.pause();
     audio.currentTime = 0;
-    audio.volume = 0.35;
+    audio.volume = volume;
     playingRef.current = false;
     setPlaying(false);
-  }, []);
+  }, [volume]);
 
   return { playing, available, play, toggle, fadeTo, reset };
 }
