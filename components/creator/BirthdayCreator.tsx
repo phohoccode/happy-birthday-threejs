@@ -34,7 +34,7 @@ import { BIRTHDAY_TEMPLATES, createBirthdayConfig, type BirthdayConfig, type Bir
 import { useBirthdayDraft } from '@/hooks/useBirthdayDraft';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { compressImage, validateAudio, validateImage } from '@/lib/media';
-import { deleteBirthdayAsset, publishBirthdayPage, uploadBirthdayAsset } from '@/lib/supabase/birthday-pages';
+import { publishBirthdayPage, uploadBirthdayAsset } from '@/lib/supabase/birthday-pages';
 
 type EditorSectionProps = {
   title: string;
@@ -94,11 +94,13 @@ export function BirthdayCreator() {
     const validationError = selected.map(validateImage).find(Boolean);
     if (validationError) { setMediaError(validationError); return; }
     if (!selected.length) return;
+    if (draft.configured && !draft.userId) { setMediaError('Đang kết nối tài khoản ẩn danh, vui lòng thử lại sau một chút.'); return; }
     setMediaError(null);
     setUploading(true);
+    let temporary: Memory[] = [];
     try {
       const compressed = await Promise.all(selected.map(compressImage));
-      const temporary = compressed.map((file) => ({
+      temporary = compressed.map((file) => ({
         id: crypto.randomUUID(),
         src: URL.createObjectURL(file),
         alt: `Kỷ niệm ${file.name}`,
@@ -120,6 +122,8 @@ export function BirthdayCreator() {
         }),
       }));
     } catch (reason) {
+      temporary.forEach((memory) => URL.revokeObjectURL(memory.src));
+      if (temporary.length) setConfig((current) => ({ ...current, memories: current.memories.filter((item) => !temporary.some((added) => added.id === item.id)) }));
       setMediaError(reason instanceof Error ? reason.message : 'Không thể tải ảnh lên.');
     } finally {
       setUploading(false);
@@ -139,15 +143,16 @@ export function BirthdayCreator() {
   const removeMemory = useCallback((memory: Memory) => {
     setConfig((current) => ({ ...current, memories: current.memories.filter((item) => item.id !== memory.id) }));
     if (memory.src.startsWith('blob:')) URL.revokeObjectURL(memory.src);
-    if (memory.storagePath) void deleteBirthdayAsset(memory.storagePath).catch(() => setMediaError('Ảnh đã xóa khỏi trang nhưng chưa thể xóa khỏi bộ nhớ.'));
   }, []);
 
   const handleMusic = useCallback(async (file?: File) => {
     if (!file) return;
     const validationError = validateAudio(file);
     if (validationError) { setMediaError(validationError); return; }
+    if (draft.configured && !draft.userId) { setMediaError('Đang kết nối tài khoản ẩn danh, vui lòng thử lại sau một chút.'); return; }
     setMediaError(null);
     setUploading(true);
+    const previousMusic = config.music;
     const temporaryUrl = URL.createObjectURL(file);
     setConfig((current) => ({ ...current, music: { src: temporaryUrl, name: file.name, volume: current.music?.volume ?? 0.35 } }));
     try {
@@ -158,17 +163,18 @@ export function BirthdayCreator() {
       URL.revokeObjectURL(temporaryUrl);
       setConfig((current) => ({ ...current, music: current.music ? { ...current.music, src: uploaded.signedUrl, storagePath: uploaded.path } : null }));
     } catch (reason) {
+      URL.revokeObjectURL(temporaryUrl);
+      setConfig((current) => current.music?.src === temporaryUrl ? { ...current, music: previousMusic } : current);
       setMediaError(reason instanceof Error ? reason.message : 'Không thể tải nhạc lên.');
     } finally {
       setUploading(false);
     }
-  }, [draft]);
+  }, [config.music, draft]);
 
   const removeMusic = useCallback(() => {
     const current = config.music;
     update('music', null);
     if (current?.src.startsWith('blob:')) URL.revokeObjectURL(current.src);
-    if (current?.storagePath) void deleteBirthdayAsset(current.storagePath).catch(() => setMediaError('Nhạc đã gỡ khỏi trang nhưng chưa thể xóa khỏi bộ nhớ.'));
   }, [config.music, update]);
 
   const validation = useMemo(() => {

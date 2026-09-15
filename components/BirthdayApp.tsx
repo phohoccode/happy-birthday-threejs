@@ -12,7 +12,7 @@ type ViewerState =
   | { mode: 'creator' }
   | { mode: 'loading' }
   | { mode: 'birthday'; config: BirthdayConfig }
-  | { mode: 'not-found'; message?: string };
+  | { mode: 'not-found' };
 
 export function BirthdayApp() {
   const [state, setState] = useState<ViewerState>({ mode: 'loading' });
@@ -43,9 +43,9 @@ export function BirthdayApp() {
         if (!active) return;
         setState(page ? { mode: 'birthday', config: page.published_config } : { mode: 'not-found' });
       })
-      .catch((reason: unknown) => {
+      .catch(() => {
         if (!active) return;
-        setState({ mode: 'not-found', message: reason instanceof Error ? reason.message : undefined });
+        setState({ mode: 'not-found' });
       });
     return () => { active = false; };
   }, []);
@@ -60,7 +60,7 @@ export function BirthdayApp() {
       <Sparkles />
       <span>404 · Lạc giữa ngân hà</span>
       <h1>Điều ước này chưa xuất hiện.</h1>
-      <p>{state.message ?? 'Liên kết có thể chưa được xuất bản hoặc không còn tồn tại.'}</p>
+      <p>Liên kết có thể chưa được xuất bản hoặc không còn tồn tại.</p>
       <Button onClick={() => { window.location.href = '/'; }}><ArrowLeft /> Tạo một trang sinh nhật</Button>
     </main>
   );

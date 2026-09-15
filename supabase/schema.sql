@@ -44,10 +44,12 @@ using (owner_id = auth.uid());
 
 drop policy if exists "visitors can read published birthday pages" on public.birthday_pages;
 create policy "visitors can read published birthday pages"
-on public.birthday_pages for select to anon, authenticated
+on public.birthday_pages for select to anon
 using (status = 'published' and published_config is not null);
 
-grant select on public.birthday_pages to anon;
+revoke all on public.birthday_pages from anon;
+grant select (id, slug, status, recipient_name, title, template_id, published_config, published_at, created_at, updated_at)
+on public.birthday_pages to anon;
 grant select, insert, update, delete on public.birthday_pages to authenticated;
 
 -- An immutable, dependency-free Vietnamese-friendly slug base.
@@ -132,7 +134,7 @@ using (bucket_id = 'birthday-assets' and split_part(name, '/', 1) = auth.uid()::
 
 drop policy if exists "visitors can read published birthday assets" on storage.objects;
 create policy "visitors can read published birthday assets"
-on storage.objects for select to anon, authenticated
+on storage.objects for select to anon
 using (
   bucket_id = 'birthday-assets'
   and exists (

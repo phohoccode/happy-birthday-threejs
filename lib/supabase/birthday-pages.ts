@@ -1,6 +1,6 @@
-import type { User } from '@supabase/supabase-js';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { BirthdayConfig } from '@/config/birthday';
-import { BIRTHDAY_ASSETS_BUCKET, getSupabaseClient } from './client';
+import { BIRTHDAY_ASSETS_BUCKET, getPublicSupabaseClient, getSupabaseClient } from './client';
 
 export type BirthdayPageStatus = 'draft' | 'published';
 
@@ -76,7 +76,7 @@ export async function publishBirthdayPage(pageId: string, config: BirthdayConfig
 }
 
 export async function getPublishedBirthday(slug: string) {
-  const client = getSupabaseClient();
+  const client = getPublicSupabaseClient();
   if (!client) throw new Error('Supabase chưa được cấu hình.');
   const { data, error } = await client
     .from('birthday_pages')
@@ -86,7 +86,7 @@ export async function getPublishedBirthday(slug: string) {
     .maybeSingle<Pick<BirthdayPage, 'id' | 'slug' | 'recipient_name' | 'title' | 'template_id' | 'published_config' | 'published_at'>>();
   if (error) throw error;
   if (!data?.published_config) return null;
-  return { ...data, published_config: await resolveAssetUrls(data.published_config) };
+  return { ...data, published_config: await resolveAssetUrls(data.published_config, client) };
 }
 
 export async function listOwnedBirthdays() {
@@ -115,17 +115,19 @@ export async function deleteBirthdayPage(page: BirthdayPage) {
   const paths = [
     ...page.config.memories.map((memory) => memory.storagePath),
     page.config.music?.storagePath,
+    ...page.published_config?.memories.map((memory) => memory.storagePath) ?? [],
+    page.published_config?.music?.storagePath,
   ].filter((path): path is string => Boolean(path));
   if (paths.length) {
-    const { error: storageError } = await client.storage.from(BIRTHDAY_ASSETS_BUCKET).remove(paths);
+    const { error: storageError } = await client.storage.from(BIRTHDAY_ASSETS_BUCKET).remove([...new Set(paths)]);
     if (storageError) throw storageError;
   }
   const { error } = await client.from('birthday_pages').delete().eq('id', page.id);
   if (error) throw error;
 }
 
-export async function resolveAssetUrls(config: BirthdayConfig) {
-  const client = getSupabaseClient();
+export async function resolveAssetUrls(config: BirthdayConfig, suppliedClient?: SupabaseClient) {
+  const client = suppliedClient ?? getSupabaseClient();
   if (!client) return config;
   const paths = [
     ...config.memories.map((memory) => memory.storagePath),
