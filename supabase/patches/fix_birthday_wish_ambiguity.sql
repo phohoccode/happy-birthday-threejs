@@ -1,41 +1,5 @@
-create extension if not exists pgcrypto;
-
-create table if not exists public.birthday_pages (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references auth.users(id) on delete cascade,
-  slug text unique,
-  status text not null default 'draft' check (status in ('draft', 'published')),
-  recipient_name text not null,
-  title text not null,
-  template_id text not null default 'midnight-wish',
-  unlock_at timestamptz,
-  unlock_timezone text not null default 'Asia/Ho_Chi_Minh',
-  config jsonb not null default '{}'::jsonb,
-  published_config jsonb,
-  published_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint published_snapshot_required check (status <> 'published' or published_config is not null)
-);
-
-alter table public.birthday_pages add column if not exists unlock_at timestamptz;
-alter table public.birthday_pages add column if not exists unlock_timezone text not null default 'Asia/Ho_Chi_Minh';
-
-create table if not exists public.birthday_wishes (
-  id uuid primary key default gen_random_uuid(),
-  birthday_id uuid not null references public.birthday_pages(id) on delete cascade,
-  author_name text not null check (char_length(author_name) between 1 and 40),
-  message text not null check (char_length(message) between 1 and 500),
-  status text not null default 'VISIBLE' check (status in ('VISIBLE', 'HIDDEN')),
-  created_at timestamptz not null default now(),
-  moderated_at timestamptz,
-  visitor_id text
-);
-
-create index if not exists birthday_wishes_page_status_created_idx on public.birthday_wishes (birthday_id, status, created_at desc);
-create index if not exists birthday_wishes_visitor_created_idx on public.birthday_wishes (visitor_id, created_at desc) where visitor_id is not null;
-
-alter table public.birthday_wishes enable row level security;
+-- Patch for an existing Supabase database.
+-- This only replaces functions/policies; it does not drop tables or data.
 
 drop policy if exists "visitors can read visible birthday wishes" on public.birthday_wishes;
 create policy "visitors can read visible birthday wishes"
@@ -63,64 +27,12 @@ using (
   )
 );
 
-revoke all on public.birthday_wishes from anon, authenticated;
-grant select (id, birthday_id, author_name, message, created_at) on public.birthday_wishes to anon;
-grant select on public.birthday_wishes to authenticated;
-
-do $$
-begin
-  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
-     and not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'birthday_wishes') then
-    execute 'alter publication supabase_realtime add table public.birthday_wishes';
-  end if;
-end;
-$$;
-
-create index if not exists birthday_pages_owner_updated_idx on public.birthday_pages (owner_id, updated_at desc);
-create unique index if not exists birthday_pages_published_slug_idx on public.birthday_pages (slug) where status = 'published';
-
-alter table public.birthday_pages enable row level security;
-
-drop policy if exists "owners can create birthday pages" on public.birthday_pages;
-create policy "owners can create birthday pages"
-on public.birthday_pages for insert to authenticated
-with check (owner_id = auth.uid());
-
-drop policy if exists "owners can read birthday pages" on public.birthday_pages;
-create policy "owners can read birthday pages"
-on public.birthday_pages for select to authenticated
-using (owner_id = auth.uid());
-
-drop policy if exists "owners can update birthday pages" on public.birthday_pages;
-create policy "owners can update birthday pages"
-on public.birthday_pages for update to authenticated
-using (owner_id = auth.uid())
-with check (owner_id = auth.uid());
-
-drop policy if exists "owners can delete birthday pages" on public.birthday_pages;
-create policy "owners can delete birthday pages"
-on public.birthday_pages for delete to authenticated
-using (owner_id = auth.uid());
-
-drop policy if exists "visitors can read published birthday pages" on public.birthday_pages;
-revoke all on public.birthday_pages from anon;
-grant select, insert, update, delete on public.birthday_pages to authenticated;
-
--- An immutable, dependency-free Vietnamese-friendly slug base.
-create or replace function public.unaccent_name(value text)
-returns text
-language sql
-immutable
-parallel safe
-return translate(
-  value,
-  'áàảãạăắằẳẵặâấầẩẫậđéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÉÈẺẼẸÊẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÚÙỦŨỤƯỨỪỬỮỰÝỲỶỸỴ',
-  'aaaaaaaaaaaaaaaaadeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyAAAAAAAAAAAAAAAAADEEEEEEEEEEEIIIIIOOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYY'
-);
-
-drop function if exists public.publish_birthday_page(uuid, jsonb);
-
-create or replace function public.publish_birthday_page(page_uuid uuid, config_snapshot jsonb, unlock_timestamp timestamptz, unlock_zone text)
+create or replace function public.publish_birthday_page(
+  page_uuid uuid,
+  config_snapshot jsonb,
+  unlock_timestamp timestamptz,
+  unlock_zone text
+)
 returns text
 language plpgsql
 security invoker
@@ -173,47 +85,12 @@ $$;
 revoke all on function public.publish_birthday_page(uuid, jsonb, timestamptz, text) from public;
 grant execute on function public.publish_birthday_page(uuid, jsonb, timestamptz, text) to authenticated;
 
-create or replace function public.get_published_birthday(page_slug text)
-returns table (
-  id uuid,
-  slug text,
-  recipient_name text,
-  title text,
-  template_id text,
-  unlock_at timestamptz,
-  unlock_timezone text,
-  published_at timestamptz,
-  published_config jsonb,
-  unlock_status text
+create or replace function public.submit_birthday_wish(
+  p_birthday_slug text,
+  p_author_name text,
+  p_message text,
+  p_visitor_id text default null
 )
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select
-    page.id,
-    page.slug,
-    page.recipient_name,
-    page.title,
-    page.template_id,
-    page.unlock_at,
-    page.unlock_timezone,
-    page.published_at,
-    case when page.unlock_at is null or page.unlock_at <= now() then page.published_config else null end,
-    case when page.unlock_at is null or page.unlock_at <= now() then 'OPEN' else 'LOCKED' end
-  from public.birthday_pages page
-  where page.slug = page_slug
-    and page.status = 'published'
-    and page.published_config is not null
-  limit 1;
-$$;
-
-revoke all on function public.get_published_birthday(text) from public;
-grant execute on function public.get_published_birthday(text) to anon, authenticated;
-
-drop function if exists public.submit_birthday_wish(text, text, text, text);
-create or replace function public.submit_birthday_wish(p_birthday_slug text, p_author_name text, p_message text, p_visitor_id text default null)
 returns table (id uuid, author_name text, message text, created_at timestamptz)
 language plpgsql
 security definer
@@ -265,27 +142,6 @@ $$;
 revoke all on function public.submit_birthday_wish(text, text, text, text) from public;
 grant execute on function public.submit_birthday_wish(text, text, text, text) to anon, authenticated;
 
-create or replace function public.get_published_birthday_wishes(p_birthday_slug text)
-returns table (id uuid, author_name text, message text, created_at timestamptz)
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select wish.id, wish.author_name, wish.message, wish.created_at
-    from public.birthday_wishes wish
-    join public.birthday_pages page on page.id = wish.birthday_id
-   where page.slug = btrim(coalesce(p_birthday_slug, ''))
-     and page.status = 'published'
-     and (page.unlock_at is null or page.unlock_at <= now())
-     and wish.status = 'VISIBLE'
-   order by wish.created_at desc
-   limit 100;
-$$;
-
-revoke all on function public.get_published_birthday_wishes(text) from public;
-grant execute on function public.get_published_birthday_wishes(text) to anon, authenticated;
-
 create or replace function public.set_birthday_wish_status(p_wish_id uuid, p_status text)
 returns void
 language plpgsql
@@ -294,7 +150,13 @@ set search_path = public
 as $$
 begin
   if p_status not in ('VISIBLE', 'HIDDEN') then raise exception 'Invalid wish status'; end if;
-  if not exists (select 1 from public.birthday_wishes wish join public.birthday_pages page on page.id = wish.birthday_id where wish.id = p_wish_id and page.owner_id = auth.uid()) then
+  if not exists (
+    select 1
+    from public.birthday_wishes wish
+    join public.birthday_pages page on page.id = wish.birthday_id
+    where wish.id = p_wish_id
+      and page.owner_id = auth.uid()
+  ) then
     raise exception 'Wish not found or access denied';
   end if;
   update public.birthday_wishes wish
@@ -314,7 +176,13 @@ security definer
 set search_path = public
 as $$
 begin
-  if not exists (select 1 from public.birthday_wishes wish join public.birthday_pages page on page.id = wish.birthday_id where wish.id = p_wish_id and page.owner_id = auth.uid()) then
+  if not exists (
+    select 1
+    from public.birthday_wishes wish
+    join public.birthday_pages page on page.id = wish.birthday_id
+    where wish.id = p_wish_id
+      and page.owner_id = auth.uid()
+  ) then
     raise exception 'Wish not found or access denied';
   end if;
   delete from public.birthday_wishes wish
@@ -325,16 +193,8 @@ $$;
 revoke all on function public.delete_birthday_wish(uuid) from public;
 grant execute on function public.delete_birthday_wish(uuid) to authenticated;
 
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'birthday-assets',
-  'birthday-assets',
-  false,
-  20971520,
-  array['image/jpeg', 'image/png', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/mp4', 'audio/x-m4a']
-)
-on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
-
+-- The storage policies are unchanged semantically; qualify outer storage columns
+-- and the correlated birthday_pages columns to keep nested references explicit.
 drop policy if exists "owners can upload birthday assets" on storage.objects;
 create policy "owners can upload birthday assets"
 on storage.objects for insert to authenticated
