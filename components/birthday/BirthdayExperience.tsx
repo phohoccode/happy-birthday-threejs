@@ -4,8 +4,9 @@ import { motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Button } from '@/components/ui/button';
-import type { BirthdayConfig } from '@/config/birthday';
+import { getGuestBookConfig, type BirthdayConfig } from '@/config/birthday';
 import { useAudio } from '@/hooks/useAudio';
+import { useBirthdayWishes } from '@/hooks/useBirthdayWishes';
 import { useDeviceQuality, type DeviceQuality } from '@/hooks/useDeviceQuality';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { ConfettiCanvas } from './ConfettiCanvas';
@@ -18,6 +19,8 @@ import { MemoryGalaxy } from './MemoryGalaxy';
 import { MusicController } from './MusicController';
 import { QualityController } from './QualityController';
 import { WishSection } from './WishSection';
+import { GuestBookSection } from './GuestBookSection';
+import type { BirthdayWish } from '@/lib/supabase/birthday-pages';
 import type { CinematicScene } from './scene-types';
 
 const STORY = [
@@ -27,7 +30,7 @@ const STORY = [
 ];
 const LazyCosmicCanvas = lazy(() => import('./CosmicCanvas').then((module) => ({ default: module.CosmicCanvas })));
 
-export function BirthdayExperience({ config, previewMode = false }: { config: BirthdayConfig; previewMode?: boolean }) {
+export function BirthdayExperience({ config, previewMode = false, birthdayId, birthdaySlug }: { config: BirthdayConfig; previewMode?: boolean; birthdayId?: string; birthdaySlug?: string }) {
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(!previewMode);
   const [opened, setOpened] = useState(previewMode);
@@ -40,6 +43,9 @@ export function BirthdayExperience({ config, previewMode = false }: { config: Bi
   const detectedQuality = useDeviceQuality();
   const [quality, setQuality] = useState<DeviceQuality>('medium');
   const reducedMotion = useReducedMotion();
+  const guestBook = getGuestBookConfig(config);
+  const wishBook = useBirthdayWishes({ slug: birthdaySlug, birthdayId, enabled: guestBook.enabled, previewMode, ready: hydrated });
+  const [selectedWish, setSelectedWish] = useState<BirthdayWish | null>(null);
   const audio = useAudio(config.music?.src, config.music?.volume ?? 0.35);
   const { fadeTo, play, reset, toggle } = audio;
   const timelineTimers = useRef<number[]>([]);
@@ -123,6 +129,7 @@ export function BirthdayExperience({ config, previewMode = false }: { config: Bi
     setCeremonyReady(false);
     setBlowPhase('idle');
     finaleBurstDone.current = false;
+    setSelectedWish(null);
     document.body.classList.remove('experience-open');
     window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
   };
@@ -137,7 +144,7 @@ export function BirthdayExperience({ config, previewMode = false }: { config: Bi
   return (
     <main className={`birthday-experience scene-${scene}`} data-theme={config.theme} style={themeStyle}>
       <div className={`world-layer ${opened ? 'is-open' : ''}`} aria-hidden="true">
-        {opened && !loading ? <Suspense fallback={null}><LazyCosmicCanvas scene={scene} candlesOut={candlesOut} blowPhase={blowPhase} age={config.age} quality={quality} reducedMotion={reducedMotion} onSlow={downgradeQuality} effects={config.effects} primaryColor={config.primaryColor} frameloop={pageVisible ? 'always' : 'never'} /></Suspense> : null}
+        {opened && !loading ? <Suspense fallback={null}><LazyCosmicCanvas scene={scene} candlesOut={candlesOut} blowPhase={blowPhase} age={config.age} quality={quality} reducedMotion={reducedMotion} onSlow={downgradeQuality} effects={config.effects} primaryColor={config.primaryColor} wishStars={wishBook.wishes} showWishGalaxy={guestBook.showGalaxy && guestBook.enabled} newWishId={wishBook.lastAddedId} onWishSelect={setSelectedWish} frameloop={pageVisible ? 'always' : 'never'} /></Suspense> : null}
       </div>
       <div className="ambient-vignette" aria-hidden="true" />
       <MagicTrailCanvas active={!loading && opened && !reducedMotion && !previewMode && pageVisible} />
@@ -171,6 +178,7 @@ export function BirthdayExperience({ config, previewMode = false }: { config: Bi
       <section className="story-section content-section" data-cinematic-scene="wish" aria-label="Câu chuyện dành cho bạn">{STORY.map((line, index) => <motion.p key={line} initial={{ opacity: 0.08, y: 36, filter: 'blur(10px)', scale: 0.97 }} whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)', scale: 1 }} viewport={{ amount: 0.72 }} transition={{ duration: reducedMotion ? 0.1 : 0.85, ease: [0.65, 0, 0.35, 1] }} className={index === STORY.length - 1 ? 'story-accent' : ''}>{line}</motion.p>)}</section>
       <WishSection name={config.recipientName} wishes={config.wishes} />
       <FinalScene name={config.recipientName} message={config.finalMessage} onReplay={resetExperience} onMemories={reviewMemories} />
+      {guestBook.enabled ? <GuestBookSection name={config.recipientName} wishes={wishBook.wishes} loading={wishBook.loading} error={wishBook.error} submit={wishBook.submit} isPreview={wishBook.isPreview} showAuthor={guestBook.showAuthor} cooldownMs={wishBook.cooldownMs} sectionRef={wishBook.sectionRef} selectedWish={selectedWish} onSelectWish={setSelectedWish} /> : null}
     </main>
   );
 }

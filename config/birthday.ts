@@ -25,6 +25,22 @@ export type BirthdayEffects = {
   giftScene: boolean;
 };
 
+export type GuestBookConfig = {
+  enabled: boolean;
+  showGalaxy: boolean;
+  showAuthor: boolean;
+};
+
+export const DEFAULT_GUEST_BOOK_CONFIG: GuestBookConfig = {
+  enabled: true,
+  showGalaxy: true,
+  showAuthor: true,
+};
+
+export function getGuestBookConfig(config: Pick<BirthdayConfig, 'guestBook'>): GuestBookConfig {
+  return { ...DEFAULT_GUEST_BOOK_CONFIG, ...config.guestBook };
+}
+
 export type BirthdayConfig = {
   recipientName: string;
   age: number;
@@ -44,6 +60,7 @@ export type BirthdayConfig = {
     volume: number;
   } | null;
   effects: BirthdayEffects;
+  guestBook?: GuestBookConfig;
   cinematicTimeline: {
     portal: number;
     warp: number;
@@ -101,6 +118,11 @@ export const birthdayConfig: BirthdayConfig = {
     aurora: true,
     memoryGalaxy: true,
     giftScene: true,
+  },
+  guestBook: {
+    enabled: true,
+    showGalaxy: true,
+    showAuthor: true,
   },
   cinematicTimeline: {
     portal: 0,

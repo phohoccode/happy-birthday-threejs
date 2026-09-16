@@ -48,6 +48,24 @@ export type PublicBirthday =
       published_config: BirthdayConfig;
     };
 
+export type BirthdayWish = {
+  id: string;
+  author_name: string;
+  message: string;
+  created_at: string;
+};
+
+export type BirthdayWishChange =
+  | { type: 'insert'; wish: BirthdayWish }
+  | { type: 'remove'; id: string };
+
+function parseBirthdayWish(value: unknown): BirthdayWish | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== 'string' || typeof row.author_name !== 'string' || typeof row.message !== 'string' || typeof row.created_at !== 'string') return null;
+  return { id: row.id, author_name: row.author_name, message: row.message, created_at: row.created_at };
+}
+
 export async function ensureAnonymousUser(): Promise<User | null> {
   const client = getSupabaseClient();
   if (!client) return null;
@@ -132,6 +150,55 @@ export async function getPublishedBirthday(slug: string): Promise<PublicBirthday
     return { ...metadata, status: 'locked', unlock_at: metadata.unlock_at, published_config: null };
   }
   return { ...metadata, status: 'open', published_config: await resolveAssetUrls(row.published_config as BirthdayConfig, client) };
+}
+
+export async function getBirthdayWishes(slug: string): Promise<BirthdayWish[]> {
+  const client = getPublicSupabaseClient();
+  if (!client) return [];
+  const { data, error } = await client.rpc('get_published_birthday_wishes', { p_birthday_slug: slug });
+  if (error) throw error;
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  return rows.map(parseBirthdayWish).filter((wish): wish is BirthdayWish => Boolean(wish));
+}
+
+export async function submitBirthdayWish(slug: string, authorName: string, message: string, visitorId: string | null = null): Promise<BirthdayWish> {
+  const client = getPublicSupabaseClient();
+  if (!client) throw new Error('Supabase chưa được cấu hình.');
+  const { data, error } = await client.rpc('submit_birthday_wish', {
+    p_birthday_slug: slug,
+    p_author_name: authorName,
+    p_message: message,
+    p_visitor_id: visitorId,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  const wish = parseBirthdayWish(row);
+  if (!wish) throw new Error('Lời chúc trả về không hợp lệ.');
+  return wish;
+}
+
+export function subscribeToBirthdayWishes(birthdayId: string, onChange: (change: BirthdayWishChange) => void) {
+  const client = getPublicSupabaseClient();
+  if (!client) return () => undefined;
+  const channel = client
+    .channel(`birthday-wishes:${birthdayId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'birthday_wishes', filter: `birthday_id=eq.${birthdayId}` }, (payload) => {
+      const row = payload.new as Record<string, unknown>;
+      if (payload.eventType === 'DELETE') {
+        const id = typeof payload.old?.id === 'string' ? payload.old.id : null;
+        if (id) onChange({ type: 'remove', id });
+        return;
+      }
+      const wish = parseBirthdayWish(row);
+      if (!wish) return;
+      if (payload.eventType === 'UPDATE' && row.status !== 'VISIBLE') {
+        onChange({ type: 'remove', id: wish.id });
+      } else {
+        onChange({ type: 'insert', wish });
+      }
+    })
+    .subscribe();
+  return () => { void client.removeChannel(channel); };
 }
 
 export async function listOwnedBirthdays() {

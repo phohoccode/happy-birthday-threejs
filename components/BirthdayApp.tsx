@@ -12,7 +12,7 @@ import { getPublishedBirthday, type PublicBirthday } from '@/lib/supabase/birthd
 type ViewerState =
   | { mode: 'creator' }
   | { mode: 'loading' }
-  | { mode: 'birthday'; config: BirthdayConfig }
+  | { mode: 'birthday'; config: BirthdayConfig; birthdayId?: string; birthdaySlug?: string }
   | { mode: 'locked'; page: Extract<PublicBirthday, { status: 'locked' }> }
   | { mode: 'not-found' };
 
@@ -45,7 +45,7 @@ export function BirthdayApp() {
         if (!active) return;
         if (!page) { setState({ mode: 'not-found' }); return; }
         if (page.status === 'locked') { setState({ mode: 'locked', page }); return; }
-        setState({ mode: 'birthday', config: page.published_config });
+        setState({ mode: 'birthday', config: page.published_config, birthdayId: page.id, birthdaySlug: page.slug });
       })
       .catch(() => {
         if (active) setState({ mode: 'not-found' });
@@ -54,7 +54,7 @@ export function BirthdayApp() {
   }, []);
 
   if (state.mode === 'creator') return <BirthdayCreator />;
-  if (state.mode === 'birthday') return <BirthdayExperience config={state.config} />;
+  if (state.mode === 'birthday') return <BirthdayExperience config={state.config} birthdayId={state.birthdayId} birthdaySlug={state.birthdaySlug} />;
   if (state.mode === 'locked') {
     const { page } = state;
     return (
@@ -65,7 +65,7 @@ export function BirthdayApp() {
         onOpen={async () => {
           const refreshed = await getPublishedBirthday(page.slug);
           if (!refreshed || refreshed.status === 'locked') throw new Error('Món quà chưa đến giờ mở.');
-          setState({ mode: 'birthday', config: refreshed.published_config });
+          setState({ mode: 'birthday', config: refreshed.published_config, birthdayId: refreshed.id, birthdaySlug: refreshed.slug });
         }}
       />
     );

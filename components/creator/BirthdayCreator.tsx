@@ -5,6 +5,7 @@
 import {
   ArrowDown,
   ArrowUp,
+  BookOpen,
   CalendarClock,
   Check,
   CloudOff,
@@ -31,7 +32,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { BIRTHDAY_TEMPLATES, createBirthdayConfig, type BirthdayConfig, type BirthdayTemplateId, type Memory } from '@/config/birthday';
+import { BIRTHDAY_TEMPLATES, createBirthdayConfig, getGuestBookConfig, type BirthdayConfig, type BirthdayTemplateId, type Memory } from '@/config/birthday';
 import { useBirthdayDraft } from '@/hooks/useBirthdayDraft';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { compressImage, validateAudio, validateImage } from '@/lib/media';
@@ -58,8 +59,8 @@ function Field({ label, htmlFor, children, hint }: { label: string; htmlFor: str
   return <div className="creator-field"><Label htmlFor={htmlFor}>{label}</Label>{children}{hint ? <small>{hint}</small> : null}</div>;
 }
 
-function EffectRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <div className="effect-row"><Label>{label}</Label><Switch checked={checked} onCheckedChange={onChange} aria-label={label} /></div>;
+function EffectRow({ label, checked, onChange, disabled = false }: { label: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) {
+  return <div className="effect-row"><Label>{label}</Label><Switch checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} /></div>;
 }
 
 function SaveIndicator({ status, error }: { status: ReturnType<typeof useBirthdayDraft>['status']; error: string | null }) {
@@ -86,6 +87,7 @@ export function BirthdayCreator() {
   const photoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
+  const guestBook = getGuestBookConfig(config);
   useEffect(() => {
     const timer = window.setTimeout(() => setClockMs(Date.now()), 0);
     return () => window.clearTimeout(timer);
@@ -112,6 +114,10 @@ export function BirthdayCreator() {
 
   const updateEffect = useCallback((key: keyof BirthdayConfig['effects'], value: boolean) => {
     setConfig((current) => ({ ...current, effects: { ...current.effects, [key]: value } }));
+  }, []);
+
+  const updateGuestBook = useCallback((key: keyof typeof guestBook, value: boolean) => {
+    setConfig((current) => ({ ...current, guestBook: { ...getGuestBookConfig(current), [key]: value } }));
   }, []);
 
   const handlePhotos = useCallback(async (files: FileList | File[]) => {
@@ -290,6 +296,13 @@ export function BirthdayCreator() {
           <Field label="Lời chúc" htmlFor="wishes" hint="Mỗi đoạn cách nhau bằng một dòng trống."><Textarea id="wishes" rows={8} value={config.wishes.join('\n\n')} onChange={(event) => update('wishes', event.target.value.split(/\n\s*\n/))} /></Field>
           <Field label="Lời kết" htmlFor="final-message"><Textarea id="final-message" rows={3} value={config.finalMessage} onChange={(event) => update('finalMessage', event.target.value)} /></Field>
           <Field label="Thông điệp bí mật" htmlFor="secret-message"><Textarea id="secret-message" rows={3} value={config.secretMessage} onChange={(event) => update('secretMessage', event.target.value)} /></Field>
+        </EditorSection>
+
+        <EditorSection title="Sổ lời chúc" icon={<BookOpen />}>
+          <p className="publish-copy">Mỗi lời chúc người xem gửi sẽ thắp sáng thêm một ngôi sao trong Wish Galaxy.</p>
+          <EffectRow label="Cho phép khách gửi lời chúc" checked={guestBook.enabled} onChange={(value) => updateGuestBook('enabled', value)} />
+          <EffectRow label="Hiển thị Wish Galaxy" checked={guestBook.showGalaxy} onChange={(value) => updateGuestBook('showGalaxy', value)} disabled={!guestBook.enabled} />
+          <EffectRow label="Hiển thị tên người gửi" checked={guestBook.showAuthor} onChange={(value) => updateGuestBook('showAuthor', value)} disabled={!guestBook.enabled} />
         </EditorSection>
 
         <EditorSection title="Giao diện" icon={<Sparkles />}>

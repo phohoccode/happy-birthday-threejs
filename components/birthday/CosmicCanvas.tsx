@@ -7,6 +7,7 @@ import { Color } from 'three';
 import type { AmbientLight, DirectionalLight, Fog, PointLight } from 'three';
 import { QUALITY_PROFILES, type DeviceQuality } from '@/hooks/useDeviceQuality';
 import type { BirthdayEffects } from '@/config/birthday';
+import type { BirthdayWish } from '@/lib/supabase/birthday-pages';
 import { Aurora } from './Aurora';
 import { Balloons } from './Balloons';
 import { CameraDirector } from './CameraDirector';
@@ -17,6 +18,7 @@ import { MemoryUniverse3D } from './MemoryUniverse3D';
 import { Portal } from './Portal';
 import { WarpTunnel } from './WarpTunnel';
 import { WorldDecor } from './WorldDecor';
+import { WishGalaxy } from './WishGalaxy';
 import type { CinematicScene } from './scene-types';
 
 const COOL = new Color('#715d9b');
@@ -71,16 +73,20 @@ type CosmicCanvasProps = {
   onSlow: () => void;
   effects: BirthdayEffects;
   primaryColor: string;
+  wishStars?: readonly BirthdayWish[];
+  showWishGalaxy?: boolean;
+  newWishId?: string | null;
+  onWishSelect?: (wish: BirthdayWish) => void;
   frameloop?: 'always' | 'demand' | 'never';
 };
 
-export const CosmicCanvas = memo(function CosmicCanvas({ scene, candlesOut, blowPhase, age, quality, reducedMotion, onSlow, effects, primaryColor, frameloop = 'always' }: CosmicCanvasProps) {
+export const CosmicCanvas = memo(function CosmicCanvas({ scene, candlesOut, blowPhase, age, quality, reducedMotion, onSlow, effects, primaryColor, wishStars = [], showWishGalaxy = false, newWishId = null, onWishSelect, frameloop = 'always' }: CosmicCanvasProps) {
   const profile = QUALITY_PROFILES[quality];
   const starCount = reducedMotion ? Math.min(220, profile.stars) : profile.stars;
   const isCakeScene = ['world', 'ceremony', 'blow', 'fireworks', 'finale'].includes(scene);
   const isWorld = ['world', 'ceremony', 'blow'].includes(scene);
   const isQuietGalaxy = scene === 'memory' || scene === 'wish' || scene === 'gift';
-  const showFireworks = scene === 'fireworks' || scene === 'finale';
+  const showFireworks = scene === 'fireworks' || (scene === 'finale' && !showWishGalaxy);
   return (
     <Canvas className="cosmic-canvas" frameloop={frameloop} dpr={profile.dpr} camera={{ position: [0, 0.15, 9.5], fov: 40 }} gl={{ antialias: quality !== 'low', alpha: true, powerPreference: 'high-performance' }} shadows={false}>
       <SceneLighting scene={scene} />
@@ -91,6 +97,7 @@ export const CosmicCanvas = memo(function CosmicCanvas({ scene, candlesOut, blow
         {isWorld || isQuietGalaxy ? <Sparkles count={reducedMotion ? Math.min(16, profile.sparkles) : profile.sparkles} scale={[10, 7, 5]} size={1.7} speed={reducedMotion ? 0 : 0.16} color={primaryColor} opacity={isQuietGalaxy ? 0.18 : 0.32} /> : null}
         {isCakeScene ? <><group scale={quality === 'low' ? 0.78 : 1}><Cake age={age} candlesOut={candlesOut} ceremony={scene === 'ceremony' || scene === 'blow' || scene === 'fireworks' || scene === 'finale'} blowPhase={blowPhase} reducedMotion={reducedMotion} /></group>{isWorld && effects.balloons ? <Balloons reducedMotion={reducedMotion} /> : null}<WorldDecor reducedMotion={reducedMotion} />{isWorld && effects.aurora && quality !== 'low' ? <Aurora reducedMotion={reducedMotion} /> : null}</> : null}
         {effects.memoryGalaxy && scene === 'memory' ? <MemoryUniverse3D quality={quality} reducedMotion={reducedMotion} /> : null}
+        {showWishGalaxy && scene === 'finale' && onWishSelect ? <WishGalaxy wishes={wishStars} newWishId={newWishId} reducedMotion={reducedMotion} onSelect={onWishSelect} /> : null}
         <Fireworks active={effects.fireworks && showFireworks} finale={scene === 'finale'} reducedMotion={reducedMotion} quality={quality} />
         {quality === 'high' && isCakeScene ? <Environment preset="night" /> : null}
       </Suspense>

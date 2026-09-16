@@ -21,6 +21,53 @@ create table if not exists public.birthday_pages (
 alter table public.birthday_pages add column if not exists unlock_at timestamptz;
 alter table public.birthday_pages add column if not exists unlock_timezone text not null default 'Asia/Ho_Chi_Minh';
 
+create table if not exists public.birthday_wishes (
+  id uuid primary key default gen_random_uuid(),
+  birthday_id uuid not null references public.birthday_pages(id) on delete cascade,
+  author_name text not null check (char_length(author_name) between 1 and 40),
+  message text not null check (char_length(message) between 1 and 500),
+  status text not null default 'VISIBLE' check (status in ('VISIBLE', 'HIDDEN')),
+  created_at timestamptz not null default now(),
+  moderated_at timestamptz,
+  visitor_id text
+);
+
+create index if not exists birthday_wishes_page_status_created_idx on public.birthday_wishes (birthday_id, status, created_at desc);
+create index if not exists birthday_wishes_visitor_created_idx on public.birthday_wishes (visitor_id, created_at desc) where visitor_id is not null;
+
+alter table public.birthday_wishes enable row level security;
+
+drop policy if exists "visitors can read visible birthday wishes" on public.birthday_wishes;
+create policy "visitors can read visible birthday wishes"
+on public.birthday_wishes for select to anon
+using (
+  status = 'VISIBLE'
+  and exists (
+    select 1 from public.birthday_pages
+    where id = birthday_id
+      and status = 'published'
+      and (unlock_at is null or unlock_at <= now())
+  )
+);
+
+drop policy if exists "owners can read birthday wishes" on public.birthday_wishes;
+create policy "owners can read birthday wishes"
+on public.birthday_wishes for select to authenticated
+using (exists (select 1 from public.birthday_pages where id = birthday_id and owner_id = auth.uid()));
+
+revoke all on public.birthday_wishes from anon, authenticated;
+grant select (id, birthday_id, author_name, message, created_at) on public.birthday_wishes to anon;
+grant select on public.birthday_wishes to authenticated;
+
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'birthday_wishes') then
+    execute 'alter publication supabase_realtime add table public.birthday_wishes';
+  end if;
+end;
+$$;
+
 create index if not exists birthday_pages_owner_updated_idx on public.birthday_pages (owner_id, updated_at desc);
 create unique index if not exists birthday_pages_published_slug_idx on public.birthday_pages (slug) where status = 'published';
 
@@ -138,6 +185,110 @@ $$;
 
 revoke all on function public.get_published_birthday(text) from public;
 grant execute on function public.get_published_birthday(text) to anon, authenticated;
+
+drop function if exists public.submit_birthday_wish(text, text, text, text);
+create or replace function public.submit_birthday_wish(p_birthday_slug text, p_author_name text, p_message text, p_visitor_id text default null)
+returns table (id uuid, author_name text, message text, created_at timestamptz)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_page_id uuid;
+  v_status text;
+  v_unlock_at timestamptz;
+  v_author_name text;
+  v_message text;
+  v_visitor_id text;
+  v_wish_id uuid;
+  v_created_at timestamptz;
+begin
+  select page.id, page.status, page.unlock_at
+    into v_page_id, v_status, v_unlock_at
+    from public.birthday_pages page
+   where page.slug = btrim(coalesce(p_birthday_slug, ''))
+   limit 1;
+  if v_page_id is null or v_status <> 'published' then raise exception 'Birthday page is not available'; end if;
+  if v_unlock_at is not null and v_unlock_at > now() then raise exception 'Birthday page is still locked'; end if;
+
+  v_author_name := regexp_replace(btrim(coalesce(p_author_name, '')), '\s+', ' ', 'g');
+  v_message := btrim(coalesce(p_message, ''));
+  v_visitor_id := nullif(left(btrim(coalesce(p_visitor_id, '')), 128), '');
+  if char_length(v_author_name) < 1 or char_length(v_author_name) > 40 then raise exception 'Author name must be between 1 and 40 characters'; end if;
+  if char_length(v_message) < 1 or char_length(v_message) > 500 then raise exception 'Wish message must be between 1 and 500 characters'; end if;
+
+  if v_visitor_id is not null then
+    perform pg_advisory_xact_lock(hashtextextended(v_visitor_id, 0));
+    if exists (select 1 from public.birthday_wishes where visitor_id = v_visitor_id and created_at > now() - interval '15 seconds') then
+      raise exception 'Please wait before sending another wish';
+    end if;
+  end if;
+
+  insert into public.birthday_wishes (birthday_id, author_name, message, visitor_id)
+  values (v_page_id, v_author_name, v_message, v_visitor_id)
+  returning birthday_wishes.id, birthday_wishes.created_at into v_wish_id, v_created_at;
+  return query select v_wish_id, v_author_name, v_message, v_created_at;
+end;
+$$;
+
+revoke all on function public.submit_birthday_wish(text, text, text, text) from public;
+grant execute on function public.submit_birthday_wish(text, text, text, text) to anon, authenticated;
+
+create or replace function public.get_published_birthday_wishes(p_birthday_slug text)
+returns table (id uuid, author_name text, message text, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select wish.id, wish.author_name, wish.message, wish.created_at
+    from public.birthday_wishes wish
+    join public.birthday_pages page on page.id = wish.birthday_id
+   where page.slug = btrim(coalesce(p_birthday_slug, ''))
+     and page.status = 'published'
+     and (page.unlock_at is null or page.unlock_at <= now())
+     and wish.status = 'VISIBLE'
+   order by wish.created_at desc
+   limit 100;
+$$;
+
+revoke all on function public.get_published_birthday_wishes(text) from public;
+grant execute on function public.get_published_birthday_wishes(text) to anon, authenticated;
+
+create or replace function public.set_birthday_wish_status(p_wish_id uuid, p_status text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_status not in ('VISIBLE', 'HIDDEN') then raise exception 'Invalid wish status'; end if;
+  if not exists (select 1 from public.birthday_wishes wish join public.birthday_pages page on page.id = wish.birthday_id where wish.id = p_wish_id and page.owner_id = auth.uid()) then
+    raise exception 'Wish not found or access denied';
+  end if;
+  update public.birthday_wishes set status = p_status, moderated_at = case when p_status = 'HIDDEN' then now() else null end where id = p_wish_id;
+end;
+$$;
+
+revoke all on function public.set_birthday_wish_status(uuid, text) from public;
+grant execute on function public.set_birthday_wish_status(uuid, text) to authenticated;
+
+create or replace function public.delete_birthday_wish(p_wish_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from public.birthday_wishes wish join public.birthday_pages page on page.id = wish.birthday_id where wish.id = p_wish_id and page.owner_id = auth.uid()) then
+    raise exception 'Wish not found or access denied';
+  end if;
+  delete from public.birthday_wishes where id = p_wish_id;
+end;
+$$;
+
+revoke all on function public.delete_birthday_wish(uuid) from public;
+grant execute on function public.delete_birthday_wish(uuid) to authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
