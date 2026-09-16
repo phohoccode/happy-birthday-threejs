@@ -19,7 +19,7 @@ function Balloon({ position, color, scale, reducedMotion }: BalloonProps) {
   return (
     <Float speed={reducedMotion ? 0 : 1.4} rotationIntensity={reducedMotion ? 0 : 0.18} floatIntensity={reducedMotion ? 0 : 0.55}>
       <group position={position} scale={scale} onClick={(event) => { event.stopPropagation(); setPopped(true); }}>
-        <mesh castShadow scale={[0.78, 1, 0.78]}>
+        <mesh scale={[0.78, 1, 0.78]}>
           <sphereGeometry args={[0.62, 28, 28]} />
           <meshPhysicalMaterial color={color} roughness={0.24} metalness={0.08} clearcoat={0.9} clearcoatRoughness={0.22} />
         </mesh>

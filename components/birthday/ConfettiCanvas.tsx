@@ -12,7 +12,7 @@ export function ConfettiCanvas({ burstKey }: { burstKey: number }) {
     const canvas = ref.current;
     const context = canvas.getContext('2d');
     if (!context) return;
-    const ratio = Math.min(window.devicePixelRatio, 1.5);
+    const ratio = Math.min(window.devicePixelRatio, window.innerWidth < 700 ? 1.15 : 1.35);
     canvas.width = window.innerWidth * ratio;
     canvas.height = window.innerHeight * ratio;
     context.scale(ratio, ratio);

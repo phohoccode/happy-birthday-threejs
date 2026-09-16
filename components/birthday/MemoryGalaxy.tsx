@@ -42,7 +42,7 @@ export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
             onClick={() => setSelected(index)}
             aria-label={`Mở ảnh: ${memory.caption}`}
           >
-            <img src={memory.src} alt={memory.alt} loading="lazy" width="768" height="960" />
+            <img src={memory.src} alt={memory.alt} loading="lazy" decoding="async" width="768" height="960" />
             <span><em>0{index + 1}</em>{memory.caption}<Expand aria-hidden="true" /></span>
           </button>
         ))}
@@ -59,7 +59,7 @@ export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
             }}
           >
             <DialogTitle className="sr-only">Kỷ niệm {selected + 1}</DialogTitle>
-            <img src={memories[selected].src} alt={memories[selected].alt} width="768" height="960" />
+            <img src={memories[selected].src} alt={memories[selected].alt} decoding="async" width="768" height="960" />
             <DialogDescription>{memories[selected].caption}</DialogDescription>
             <Button variant="ghost" size="icon-lg" className="memory-nav memory-prev" onClick={() => step(-1)} aria-label="Ảnh trước"><ChevronLeft /></Button>
             <Button variant="ghost" size="icon-lg" className="memory-nav memory-next" onClick={() => step(1)} aria-label="Ảnh sau"><ChevronRight /></Button>

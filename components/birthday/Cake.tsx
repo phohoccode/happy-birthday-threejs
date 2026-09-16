@@ -21,8 +21,7 @@ function Flame({ out, gust, index, lit }: { out: boolean; gust: boolean; index: 
     <group ref={flame} position={[0, 0.43, 0]}>
       <mesh scale={[0.72, 1.4, 0.72]}><sphereGeometry args={[0.105, 16, 16]} /><meshBasicMaterial color="#ff9c4b" transparent opacity={0.9} toneMapped={false} /></mesh>
       <mesh position={[0, -0.02, 0.012]} scale={[0.42, 0.82, 0.42]}><sphereGeometry args={[0.1, 14, 14]} /><meshBasicMaterial color="#fff5bf" toneMapped={false} /></mesh>
-      <pointLight color="#ffb65c" intensity={gust ? 1.1 : 2.15} distance={2.8} decay={2} />
-      <Sparkles count={5} scale={[0.25, 0.75, 0.25]} position={[0, 0.36, 0]} color="#ffd27d" size={1.2} speed={0.32} />
+      <Sparkles count={3} scale={[0.25, 0.75, 0.25]} position={[0, 0.36, 0]} color="#ffd27d" size={1.2} speed={0.32} />
     </group>
   );
 }
@@ -94,7 +93,8 @@ export function Cake({ age, candlesOut, ceremony, blowPhase, reducedMotion }: Ca
         {[-.42, .42].map((x, index) => <group key={x} position={[x, 1.22, -.18]} rotation={[.18, 0, index ? -.25 : .25]}><mesh><boxGeometry args={[.2, .38, .07]} /><meshPhysicalMaterial color="#3f1f21" roughness={.28} clearcoat={.4} /></mesh><mesh position={[0, .2, .02]}><octahedronGeometry args={[.055, 0]} /><meshStandardMaterial color="#e9bf63" metalness={.75} /></mesh></group>)}
         {candlePositions.map((x, index) => <Candle key={x} x={x} index={index} ceremony={ceremony} out={candlesOut} gust={blowPhase === 'gust'} reducedMotion={reducedMotion} />)}
         {age ? <AgeNumber age={age} /> : null}
-        {candlesOut ? <><Sparkles count={28} scale={[1.7, 1.35, 1]} position={[0, 1.82, 0]} color="#c9c2d6" size={2} speed={0.18} opacity={0.26} /><pointLight position={[0, 1.1, -0.5]} color="#b896ff" intensity={blowPhase === 'boom' ? 8 : 0.6} distance={8} /></> : null}
+        {ceremony ? <pointLight position={[0, 1.55, -0.35]} color="#ffb65c" intensity={candlesOut ? (blowPhase === 'boom' ? 5 : 0.45) : 2.1} distance={6} decay={2} /> : null}
+        {candlesOut ? <Sparkles count={20} scale={[1.7, 1.35, 1]} position={[0, 1.82, 0]} color="#c9c2d6" size={2} speed={0.18} opacity={0.26} /> : null}
       </group>
     </Float>
   );

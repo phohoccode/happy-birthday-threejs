@@ -17,8 +17,10 @@ export function MagicTrailCanvas({ active }: { active: boolean }) {
     let height = 0;
     let frame = 0;
     let lastSpawn = 0;
+    let lastDraw = 0;
+    let pageVisible = !document.hidden;
     const resize = () => {
-      const ratio = Math.min(window.devicePixelRatio, 1.5);
+      const ratio = Math.min(window.devicePixelRatio, window.innerWidth < 700 ? 1.15 : 1.35);
       width = window.innerWidth;
       height = window.innerHeight;
       canvas.width = width * ratio;
@@ -39,7 +41,16 @@ export function MagicTrailCanvas({ active }: { active: boolean }) {
       lastSpawn = now;
       spawn(event.clientX, event.clientY, event.pointerType === 'touch' ? 10 : 3);
     };
-    const draw = () => {
+    const draw = (now: number) => {
+      if (now - lastDraw < 1000 / 45) {
+        frame = requestAnimationFrame(draw);
+        return;
+      }
+      lastDraw = now;
+      if (!pageVisible) {
+        frame = requestAnimationFrame(draw);
+        return;
+      }
       context.clearRect(0, 0, width, height);
       context.globalCompositeOperation = 'lighter';
       for (let index = particles.length - 1; index >= 0; index -= 1) {
@@ -65,9 +76,12 @@ export function MagicTrailCanvas({ active }: { active: boolean }) {
     window.addEventListener('resize', resize);
     window.addEventListener('pointermove', pointer, { passive: true });
     window.addEventListener('pointerdown', pointer, { passive: true });
+    const visibility = () => { pageVisible = !document.hidden; };
+    document.addEventListener('visibilitychange', visibility);
     frame = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(frame);
+      document.removeEventListener('visibilitychange', visibility);
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointermove', pointer);
       window.removeEventListener('pointerdown', pointer);

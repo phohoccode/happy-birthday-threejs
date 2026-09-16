@@ -4,6 +4,7 @@ import { Sparkles } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import type { Group, Mesh, ShaderMaterial } from 'three';
+import type { DeviceQuality } from '@/hooks/useDeviceQuality';
 
 const portalVertex = `
   uniform float uTime;
@@ -35,15 +36,17 @@ const portalFragment = `
   }
 `;
 
-export function Portal({ reducedMotion }: { reducedMotion: boolean }) {
+export function Portal({ reducedMotion, quality }: { reducedMotion: boolean; quality: DeviceQuality }) {
   const ring = useRef<Group>(null);
   const core = useRef<Mesh>(null);
   const material = useRef<ShaderMaterial>(null);
-  const dust = useMemo(() => Array.from({ length: reducedMotion ? 34 : 96 }, (_, index) => {
-    const angle = (index / (reducedMotion ? 34 : 96)) * Math.PI * 2;
+  const dustCount = reducedMotion ? 28 : quality === 'low' ? 48 : quality === 'medium' ? 72 : 90;
+  const segments = quality === 'low' ? 56 : 80;
+  const dust = useMemo(() => Array.from({ length: dustCount }, (_, index) => {
+    const angle = (index / dustCount) * Math.PI * 2;
     const radius = 2.08 + Math.sin(index * 2.17) * 0.18;
     return [Math.cos(angle) * radius, Math.sin(angle) * radius, Math.sin(index) * 0.18] as [number, number, number];
-  }), [reducedMotion]);
+  }), [dustCount]);
 
   useFrame(({ clock }) => {
     if (ring.current) ring.current.rotation.z = reducedMotion ? 0.1 : clock.elapsedTime * 0.16;
@@ -56,12 +59,12 @@ export function Portal({ reducedMotion }: { reducedMotion: boolean }) {
 
   return (
     <group position={[0, 0, -0.8]}>
-      <mesh ref={core}><circleGeometry args={[1.76, 96]} /><shaderMaterial ref={material} transparent depthWrite={false} vertexShader={portalVertex} fragmentShader={portalFragment} uniforms={{ uTime: { value: 0 } }} /></mesh>
-      <mesh position={[0, 0, -0.05]}><torusGeometry args={[1.86, 0.12, 16, 96]} /><meshBasicMaterial color="#d4b7ff" transparent opacity={0.82} toneMapped={false} /></mesh>
-      <mesh position={[0, 0, -0.08]}><torusGeometry args={[2.03, 0.025, 8, 96]} /><meshBasicMaterial color="#f7d774" transparent opacity={0.68} toneMapped={false} /></mesh>
+      <mesh ref={core}><circleGeometry args={[1.76, segments]} /><shaderMaterial ref={material} transparent depthWrite={false} vertexShader={portalVertex} fragmentShader={portalFragment} uniforms={{ uTime: { value: 0 } }} /></mesh>
+      <mesh position={[0, 0, -0.05]}><torusGeometry args={[1.86, 0.12, 12, segments]} /><meshBasicMaterial color="#d4b7ff" transparent opacity={0.82} toneMapped={false} /></mesh>
+      <mesh position={[0, 0, -0.08]}><torusGeometry args={[2.03, 0.025, 8, segments]} /><meshBasicMaterial color="#f7d774" transparent opacity={0.68} toneMapped={false} /></mesh>
       <group ref={ring}>{dust.map((position, index) => <mesh key={index} position={position} scale={index % 3 === 0 ? 0.045 : 0.026}><sphereGeometry args={[1, 6, 6]} /><meshBasicMaterial color={index % 4 === 0 ? '#f7d774' : '#c7a7ff'} toneMapped={false} /></mesh>)}</group>
       <mesh position={[0, -2.1, -1.8]} rotation={[0, 0, Math.PI]}><coneGeometry args={[2.1, 6, 40, 1, true]} /><meshBasicMaterial color="#a77ee4" transparent opacity={0.045} depthWrite={false} /></mesh>
-      <Sparkles count={reducedMotion ? 22 : 112} scale={[4.4, 4.4, 1]} size={2.2} speed={reducedMotion ? 0 : 0.8} color="#d9c5ff" opacity={0.7} />
+      <Sparkles count={reducedMotion ? 18 : quality === 'low' ? 48 : quality === 'medium' ? 72 : 96} scale={[4.4, 4.4, 1]} size={2.2} speed={reducedMotion ? 0 : 0.8} color="#d9c5ff" opacity={0.7} />
       <pointLight color="#aa7cff" intensity={5} distance={10} />
     </group>
   );

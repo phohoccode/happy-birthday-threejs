@@ -2,12 +2,12 @@
 
 import { Float, Sparkles } from '@react-three/drei';
 import { useMemo } from 'react';
-import { CatmullRomCurve3, Color, DoubleSide, TubeGeometry, Vector3 } from 'three';
+import { CatmullRomCurve3, DoubleSide, TubeGeometry, Vector3 } from 'three';
 
 function Ribbon({ points, color }: { points: [number, number, number][]; color: string }) {
   const geometry = useMemo(() => {
     const curve = new CatmullRomCurve3(points.map((point) => new Vector3(...point)));
-    return new TubeGeometry(curve, 44, 0.022, 6, false);
+    return new TubeGeometry(curve, 28, 0.022, 5, false);
   }, [points]);
   return (
     <mesh geometry={geometry}>
@@ -42,7 +42,7 @@ export function WorldDecor({ reducedMotion }: { reducedMotion: boolean }) {
         <Ribbon points={ribbonOne} color="#d8b7ff" /><Ribbon points={ribbonTwo} color="#f7d774" />
       </Float>
       <Island position={[-3.3, -1.65, -2.4]} accent="#7859a4" /><Island position={[3.6, -1.15, -3.2]} accent="#a8597a" />
-      <Sparkles count={reducedMotion ? 18 : 52} scale={[10, 6, 5]} size={1.4} speed={reducedMotion ? 0 : 0.2} color={new Color('#f7d774')} opacity={0.25} />
+      <Sparkles count={reducedMotion ? 14 : 38} scale={[10, 6, 5]} size={1.4} speed={reducedMotion ? 0 : 0.2} color="#f7d774" opacity={0.25} />
     </group>
   );
 }

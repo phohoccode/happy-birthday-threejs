@@ -36,6 +36,7 @@ export function BirthdayExperience({ config, previewMode = false }: { config: Bi
   const [candlesOut, setCandlesOut] = useState(false);
   const [blowPhase, setBlowPhase] = useState<'idle' | 'gust' | 'smoke' | 'boom'>('idle');
   const [burstKey, setBurstKey] = useState(0);
+  const [pageVisible, setPageVisible] = useState(true);
   const detectedQuality = useDeviceQuality();
   const [quality, setQuality] = useState<DeviceQuality>('medium');
   const reducedMotion = useReducedMotion();
@@ -47,6 +48,12 @@ export function BirthdayExperience({ config, previewMode = false }: { config: Bi
   useEffect(() => { const frame = requestAnimationFrame(() => setQuality(detectedQuality)); return () => cancelAnimationFrame(frame); }, [detectedQuality]);
   useEffect(() => { const frame = requestAnimationFrame(() => setHydrated(true)); return () => cancelAnimationFrame(frame); }, []);
   useEffect(() => () => timelineTimers.current.forEach(window.clearTimeout), []);
+  useEffect(() => {
+    const onVisibility = () => setPageVisible(document.visibilityState !== 'hidden');
+    onVisibility();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   const finishLoading = useCallback(() => setLoading(false), []);
   const later = useCallback((callback: () => void, delay: number) => {
@@ -130,10 +137,10 @@ export function BirthdayExperience({ config, previewMode = false }: { config: Bi
   return (
     <main className={`birthday-experience scene-${scene}`} data-theme={config.theme} style={themeStyle}>
       <div className={`world-layer ${opened ? 'is-open' : ''}`} aria-hidden="true">
-        {!loading ? <Suspense fallback={null}><LazyCosmicCanvas scene={scene} candlesOut={candlesOut} blowPhase={blowPhase} age={config.age} quality={quality} reducedMotion={reducedMotion} onSlow={downgradeQuality} effects={config.effects} primaryColor={config.primaryColor} /></Suspense> : null}
+        {opened && !loading ? <Suspense fallback={null}><LazyCosmicCanvas scene={scene} candlesOut={candlesOut} blowPhase={blowPhase} age={config.age} quality={quality} reducedMotion={reducedMotion} onSlow={downgradeQuality} effects={config.effects} primaryColor={config.primaryColor} frameloop={pageVisible ? 'always' : 'never'} /></Suspense> : null}
       </div>
       <div className="ambient-vignette" aria-hidden="true" />
-      <MagicTrailCanvas active={!loading && opened && !reducedMotion && !previewMode} />
+      <MagicTrailCanvas active={!loading && opened && !reducedMotion && !previewMode && pageVisible} />
       {loading ? <LoadingScreen onReady={finishLoading} /> : null}
       {!loading && !opened ? <IntroScene name={config.recipientName} intro={config.intro} onOpen={openExperience} /> : null}
       {opened && !previewMode ? <div className="experience-controls"><MusicController playing={audio.playing} available={audio.available} onToggle={toggle} /><QualityController quality={quality} onChange={setQuality} /></div> : null}

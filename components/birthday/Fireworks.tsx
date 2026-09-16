@@ -4,6 +4,7 @@ import { PointMaterial, Points } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import type { Group, PointsMaterial } from 'three';
+import { QUALITY_PROFILES, type DeviceQuality } from '@/hooks/useDeviceQuality';
 
 type BurstKind = 'sphere' | 'ring' | 'heart' | 'willow' | 'waterfall' | 'spiral';
 const COLORS = ['#f7d774', '#f1b1cc', '#b39bea', '#fff1da'];
@@ -30,11 +31,11 @@ function createShape(kind: BurstKind, count: number) {
   return values;
 }
 
-function Burst({ offset, color, delay, kind, duration = 2.6 }: { offset: [number, number, number]; color: string; delay: number; kind: BurstKind; duration?: number }) {
+function Burst({ offset, color, delay, kind, particles, duration = 2.6 }: { offset: [number, number, number]; color: string; delay: number; kind: BurstKind; particles: number; duration?: number }) {
   const group = useRef<Group>(null);
   const material = useRef<PointsMaterial>(null);
   const started = useRef<number | null>(null);
-  const positions = useMemo(() => createShape(kind, kind === 'heart' ? 120 : 94), [kind]);
+  const positions = useMemo(() => createShape(kind, particles), [kind, particles]);
   useFrame(({ clock }) => {
     if (!group.current || !material.current) return;
     if (started.current === null) started.current = clock.elapsedTime;
@@ -49,12 +50,13 @@ function Burst({ offset, color, delay, kind, duration = 2.6 }: { offset: [number
     group.current.position.y = offset[1] - Math.max(0, progress - 0.3) ** 2 * (kind === 'willow' || kind === 'waterfall' ? 2.3 : 0.8);
     material.current.opacity = Math.min(1, time * 4) * Math.max(0, 1 - progress ** 2.2);
   });
-  return <group ref={group} position={offset}><Points positions={positions} stride={3} frustumCulled={false}><PointMaterial ref={material} transparent color={color} size={0.13} sizeAttenuation depthWrite={false} opacity={0} /></Points></group>;
+  return <group ref={group} position={offset}><Points positions={positions} stride={3}><PointMaterial ref={material} transparent color={color} size={0.13} sizeAttenuation depthWrite={false} opacity={0} /></Points></group>;
 }
 
-export function Fireworks({ active, finale, reducedMotion }: { active: boolean; finale: boolean; reducedMotion: boolean }) {
+export function Fireworks({ active, finale, reducedMotion, quality }: { active: boolean; finale: boolean; reducedMotion: boolean; quality: DeviceQuality }) {
   if (!active) return null;
-  const density = reducedMotion ? 2 : finale ? 9 : 6;
+  const profile = QUALITY_PROFILES[quality];
+  const density = reducedMotion ? Math.min(2, profile.fireworksBursts) : finale ? profile.fireworksBursts : Math.min(profile.fireworksBursts, 6);
   const sequence = [
     { offset: [-2.9, 1.5, -1] as [number, number, number], kind: 'sphere' as const, delay: 0 },
     { offset: [0, 2.5, -2] as [number, number, number], kind: 'ring' as const, delay: 0.65 },
@@ -66,5 +68,5 @@ export function Fireworks({ active, finale, reducedMotion }: { active: boolean; 
     { offset: [-3.4, 2.4, -2] as [number, number, number], kind: 'ring' as const, delay: 5.9 },
     { offset: [3.4, 2.35, -2] as [number, number, number], kind: 'sphere' as const, delay: 6.1 },
   ].slice(0, density);
-  return <group position={[0, 0.55, -2.8]}>{sequence.map((burst, index) => <Burst key={`${burst.kind}-${index}`} {...burst} color={COLORS[index % COLORS.length]} />)}</group>;
+  return <group position={[0, 0.55, -2.8]}>{sequence.map((burst, index) => <Burst key={`${burst.kind}-${index}`} {...burst} particles={burst.kind === 'heart' ? Math.round(profile.fireworksParticles * 1.15) : profile.fireworksParticles} color={COLORS[index % COLORS.length]} />)}</group>;
 }
