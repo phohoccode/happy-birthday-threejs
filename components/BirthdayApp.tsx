@@ -3,15 +3,17 @@
 import { ArrowLeft, LoaderCircle, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { BirthdayExperience } from '@/components/birthday/BirthdayExperience';
+import { ScheduledUnlockScreen } from '@/components/birthday/ScheduledUnlockScreen';
 import { BirthdayCreator } from '@/components/creator/BirthdayCreator';
 import { Button } from '@/components/ui/button';
 import type { BirthdayConfig } from '@/config/birthday';
-import { getPublishedBirthday } from '@/lib/supabase/birthday-pages';
+import { getPublishedBirthday, type PublicBirthday } from '@/lib/supabase/birthday-pages';
 
 type ViewerState =
   | { mode: 'creator' }
   | { mode: 'loading' }
   | { mode: 'birthday'; config: BirthdayConfig }
+  | { mode: 'locked'; page: Extract<PublicBirthday, { status: 'locked' }> }
   | { mode: 'not-found' };
 
 export function BirthdayApp() {
@@ -41,17 +43,33 @@ export function BirthdayApp() {
     getPublishedBirthday(slug)
       .then((page) => {
         if (!active) return;
-        setState(page ? { mode: 'birthday', config: page.published_config } : { mode: 'not-found' });
+        if (!page) { setState({ mode: 'not-found' }); return; }
+        if (page.status === 'locked') { setState({ mode: 'locked', page }); return; }
+        setState({ mode: 'birthday', config: page.published_config });
       })
       .catch(() => {
-        if (!active) return;
-        setState({ mode: 'not-found' });
+        if (active) setState({ mode: 'not-found' });
       });
     return () => { active = false; };
   }, []);
 
   if (state.mode === 'creator') return <BirthdayCreator />;
   if (state.mode === 'birthday') return <BirthdayExperience config={state.config} />;
+  if (state.mode === 'locked') {
+    const { page } = state;
+    return (
+      <ScheduledUnlockScreen
+        recipientName={page.recipient_name}
+        unlockAt={page.unlock_at}
+        timeZone={page.unlock_timezone}
+        onOpen={async () => {
+          const refreshed = await getPublishedBirthday(page.slug);
+          if (!refreshed || refreshed.status === 'locked') throw new Error('Món quà chưa đến giờ mở.');
+          setState({ mode: 'birthday', config: refreshed.published_config });
+        }}
+      />
+    );
+  }
   if (state.mode === 'loading') return <main className="public-state"><LoaderCircle className="spin" /><p>Đang gom những vì sao...</p></main>;
 
   return (

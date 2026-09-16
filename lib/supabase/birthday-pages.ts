@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { BirthdayConfig } from '@/config/birthday';
+import { DEFAULT_UNLOCK_TIME_ZONE } from '@/lib/unlock';
 import { BIRTHDAY_ASSETS_BUCKET, getPublicSupabaseClient, getSupabaseClient } from './client';
 
 export type BirthdayPageStatus = 'draft' | 'published';
@@ -12,12 +13,40 @@ export type BirthdayPage = {
   recipient_name: string;
   title: string;
   template_id: string;
+  unlock_at: string | null;
+  unlock_timezone: string;
   config: BirthdayConfig;
   published_config: BirthdayConfig | null;
   published_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export type PublicBirthday =
+  | {
+      status: 'locked';
+      id: string;
+      slug: string;
+      recipient_name: string;
+      title: string;
+      template_id: string;
+      unlock_at: string;
+      unlock_timezone: string;
+      published_at: string | null;
+      published_config: null;
+    }
+  | {
+      status: 'open';
+      id: string;
+      slug: string;
+      recipient_name: string;
+      title: string;
+      template_id: string;
+      unlock_at: string | null;
+      unlock_timezone: string;
+      published_at: string | null;
+      published_config: BirthdayConfig;
+    };
 
 export async function ensureAnonymousUser(): Promise<User | null> {
   const client = getSupabaseClient();
@@ -29,7 +58,7 @@ export async function ensureAnonymousUser(): Promise<User | null> {
   return signedIn.user;
 }
 
-export async function createDraft(ownerId: string, config: BirthdayConfig) {
+export async function createDraft(ownerId: string, config: BirthdayConfig, unlockAt: string | null = null, unlockTimezone = DEFAULT_UNLOCK_TIME_ZONE) {
   const client = getSupabaseClient();
   if (!client) throw new Error('Supabase chưa được cấu hình.');
   const { data, error } = await client
@@ -40,6 +69,8 @@ export async function createDraft(ownerId: string, config: BirthdayConfig) {
       recipient_name: config.recipientName,
       title: config.title,
       template_id: config.theme,
+      unlock_at: unlockAt,
+      unlock_timezone: unlockTimezone,
       config,
     })
     .select('*')
@@ -48,7 +79,7 @@ export async function createDraft(ownerId: string, config: BirthdayConfig) {
   return data;
 }
 
-export async function saveDraft(pageId: string, config: BirthdayConfig) {
+export async function saveDraft(pageId: string, config: BirthdayConfig, unlockAt: string | null = null, unlockTimezone = DEFAULT_UNLOCK_TIME_ZONE) {
   const client = getSupabaseClient();
   if (!client) throw new Error('Supabase chưa được cấu hình.');
   const { error } = await client
@@ -57,6 +88,8 @@ export async function saveDraft(pageId: string, config: BirthdayConfig) {
       recipient_name: config.recipientName,
       title: config.title,
       template_id: config.theme,
+      unlock_at: unlockAt,
+      unlock_timezone: unlockTimezone,
       config,
       updated_at: new Date().toISOString(),
     })
@@ -64,29 +97,41 @@ export async function saveDraft(pageId: string, config: BirthdayConfig) {
   if (error) throw error;
 }
 
-export async function publishBirthdayPage(pageId: string, config: BirthdayConfig) {
+export async function publishBirthdayPage(pageId: string, config: BirthdayConfig, unlockAt: string | null = null, unlockTimezone = DEFAULT_UNLOCK_TIME_ZONE) {
   const client = getSupabaseClient();
   if (!client) throw new Error('Supabase chưa được cấu hình.');
   const { data, error } = await client.rpc('publish_birthday_page', {
     page_uuid: pageId,
     config_snapshot: config,
+    unlock_timestamp: unlockAt,
+    unlock_zone: unlockTimezone,
   });
   if (error) throw error;
   return data as string;
 }
 
-export async function getPublishedBirthday(slug: string) {
+export async function getPublishedBirthday(slug: string): Promise<PublicBirthday | null> {
   const client = getPublicSupabaseClient();
   if (!client) throw new Error('Supabase chưa được cấu hình.');
-  const { data, error } = await client
-    .from('birthday_pages')
-    .select('id,slug,recipient_name,title,template_id,published_config,published_at')
-    .eq('slug', slug)
-    .eq('status', 'published')
-    .maybeSingle<Pick<BirthdayPage, 'id' | 'slug' | 'recipient_name' | 'title' | 'template_id' | 'published_config' | 'published_at'>>();
+  const { data, error } = await client.rpc('get_published_birthday', { page_slug: slug });
   if (error) throw error;
-  if (!data?.published_config) return null;
-  return { ...data, published_config: await resolveAssetUrls(data.published_config, client) };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const metadata = {
+    id: String(row.id),
+    slug: String(row.slug),
+    recipient_name: String(row.recipient_name),
+    title: String(row.title),
+    template_id: String(row.template_id),
+    unlock_at: row.unlock_at ? String(row.unlock_at) : null,
+    unlock_timezone: row.unlock_timezone ? String(row.unlock_timezone) : DEFAULT_UNLOCK_TIME_ZONE,
+    published_at: row.published_at ? String(row.published_at) : null,
+  };
+  if (row.unlock_status === 'LOCKED' || !row.published_config) {
+    if (!metadata.unlock_at) return null;
+    return { ...metadata, status: 'locked', unlock_at: metadata.unlock_at, published_config: null };
+  }
+  return { ...metadata, status: 'open', published_config: await resolveAssetUrls(row.published_config as BirthdayConfig, client) };
 }
 
 export async function listOwnedBirthdays() {
@@ -94,7 +139,7 @@ export async function listOwnedBirthdays() {
   if (!client) return [];
   const { data, error } = await client
     .from('birthday_pages')
-    .select('id,slug,status,recipient_name,title,template_id,config,published_at,created_at,updated_at')
+    .select('id,slug,status,recipient_name,title,template_id,unlock_at,unlock_timezone,config,published_at,created_at,updated_at')
     .order('updated_at', { ascending: false });
   if (error) throw error;
   return data;

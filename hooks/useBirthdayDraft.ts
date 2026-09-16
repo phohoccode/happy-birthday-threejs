@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BirthdayConfig } from '@/config/birthday';
 import { createDraft, ensureAnonymousUser, saveDraft } from '@/lib/supabase/birthday-pages';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { DEFAULT_UNLOCK_TIME_ZONE } from '@/lib/unlock';
 
 export type SaveStatus = 'offline' | 'idle' | 'saving' | 'saved' | 'error';
 
-export function useBirthdayDraft(config: BirthdayConfig) {
+export function useBirthdayDraft(config: BirthdayConfig, unlockAt: string | null = null, unlockTimezone = DEFAULT_UNLOCK_TIME_ZONE) {
   const configured = Boolean(getSupabaseClient());
   const [userId, setUserId] = useState<string | null>(null);
   const [pageId, setPageId] = useState<string | null>(null);
@@ -18,8 +19,14 @@ export function useBirthdayDraft(config: BirthdayConfig) {
   const saveChainRef = useRef(Promise.resolve());
   const revisionRef = useRef(0);
   const latestConfigRef = useRef(config);
+  const latestUnlockAtRef = useRef(unlockAt);
+  const latestUnlockTimezoneRef = useRef(unlockTimezone);
 
-  useEffect(() => { latestConfigRef.current = config; }, [config]);
+  useEffect(() => {
+    latestConfigRef.current = config;
+    latestUnlockAtRef.current = unlockAt;
+    latestUnlockTimezoneRef.current = unlockTimezone;
+  }, [config, unlockAt, unlockTimezone]);
 
   useEffect(() => {
     if (!configured) return;
@@ -34,11 +41,11 @@ export function useBirthdayDraft(config: BirthdayConfig) {
     return () => { active = false; };
   }, [configured]);
 
-  const ensurePage = useCallback(async (snapshot = latestConfigRef.current) => {
+  const ensurePage = useCallback(async (snapshot = latestConfigRef.current, unlockSnapshot = latestUnlockAtRef.current, timezoneSnapshot = latestUnlockTimezoneRef.current) => {
     if (pageIdRef.current) return pageIdRef.current;
     if (!userId) throw new Error('Phiên ẩn danh chưa sẵn sàng.');
     if (!creatingRef.current) {
-      creatingRef.current = createDraft(userId, snapshot).then((page) => {
+      creatingRef.current = createDraft(userId, snapshot, unlockSnapshot, timezoneSnapshot).then((page) => {
         pageIdRef.current = page.id;
         setPageId(page.id);
         return page.id;
@@ -58,8 +65,8 @@ export function useBirthdayDraft(config: BirthdayConfig) {
         .catch(() => undefined)
         .then(async () => {
           try {
-            const id = await ensurePage(snapshot);
-            await saveDraft(id, snapshot);
+            const id = await ensurePage(snapshot, unlockAt, unlockTimezone);
+            await saveDraft(id, snapshot, unlockAt, unlockTimezone);
             if (revision === revisionRef.current) setStatus('saved');
           } catch (reason) {
             if (revision !== revisionRef.current) return;
@@ -69,15 +76,15 @@ export function useBirthdayDraft(config: BirthdayConfig) {
         });
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [config, configured, ensurePage, userId]);
+  }, [config, configured, ensurePage, unlockAt, unlockTimezone, userId]);
 
-  const flush = useCallback(async () => {
+  const flush = useCallback(async (unlockSnapshot = latestUnlockAtRef.current, timezoneSnapshot = latestUnlockTimezoneRef.current) => {
     if (!configured) throw new Error('Hãy thêm biến môi trường Supabase trước khi xuất bản.');
     setStatus('saving');
     const snapshot = structuredClone(latestConfigRef.current);
     await saveChainRef.current.catch(() => undefined);
-    const id = await ensurePage(snapshot);
-    await saveDraft(id, snapshot);
+    const id = await ensurePage(snapshot, unlockSnapshot, timezoneSnapshot);
+    await saveDraft(id, snapshot, unlockSnapshot, timezoneSnapshot);
     setStatus('saved');
     return id;
   }, [configured, ensurePage]);

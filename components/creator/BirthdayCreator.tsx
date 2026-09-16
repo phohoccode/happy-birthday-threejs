@@ -5,6 +5,7 @@
 import {
   ArrowDown,
   ArrowUp,
+  CalendarClock,
   Check,
   CloudOff,
   Copy,
@@ -19,7 +20,7 @@ import {
   Upload,
   Volume2,
 } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BirthdayExperience } from '@/components/birthday/BirthdayExperience';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -34,6 +35,7 @@ import { BIRTHDAY_TEMPLATES, createBirthdayConfig, type BirthdayConfig, type Bir
 import { useBirthdayDraft } from '@/hooks/useBirthdayDraft';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { compressImage, validateAudio, validateImage } from '@/lib/media';
+import { DEFAULT_UNLOCK_TIME_ZONE, formatUnlockAt, isValidTimeZone, SUPPORTED_TIME_ZONES, zonedDateTimeToUtc } from '@/lib/unlock';
 import { publishBirthdayPage, uploadBirthdayAsset } from '@/lib/supabase/birthday-pages';
 
 type EditorSectionProps = {
@@ -69,6 +71,11 @@ function SaveIndicator({ status, error }: { status: ReturnType<typeof useBirthda
 
 export function BirthdayCreator() {
   const [config, setConfig] = useState<BirthdayConfig>(() => createBirthdayConfig());
+  const [unlockMode, setUnlockMode] = useState<'now' | 'scheduled'>('now');
+  const [unlockDate, setUnlockDate] = useState('');
+  const [unlockTime, setUnlockTime] = useState('');
+  const [unlockTimezone, setUnlockTimezone] = useState(DEFAULT_UNLOCK_TIME_ZONE);
+  const [clockMs, setClockMs] = useState<number | null>(null);
   const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>('edit');
   const [uploading, setUploading] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -79,7 +86,25 @@ export function BirthdayCreator() {
   const photoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
-  const draft = useBirthdayDraft(config);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setClockMs(Date.now()), 0);
+    return () => window.clearTimeout(timer);
+  }, [unlockDate, unlockMode, unlockTime, unlockTimezone]);
+  const unlockSchedule = useMemo(() => {
+    if (unlockMode === 'now') return { unlockAt: null, error: null };
+    if (!unlockDate || !unlockTime) return { unlockAt: null, error: 'Hãy chọn ngày và giờ mở.' };
+    if (!isValidTimeZone(unlockTimezone)) return { unlockAt: null, error: 'Múi giờ không hợp lệ.' };
+    try {
+      const timestamp = zonedDateTimeToUtc(unlockDate, unlockTime, unlockTimezone);
+      if (clockMs !== null && Date.parse(timestamp) <= clockMs) return { unlockAt: null, error: 'Thời gian mở phải ở tương lai.' };
+      return { unlockAt: timestamp, error: null };
+    } catch (reason) {
+      return { unlockAt: null, error: reason instanceof Error ? reason.message : 'Ngày giờ mở không hợp lệ.' };
+    }
+  }, [clockMs, unlockDate, unlockMode, unlockTime, unlockTimezone]);
+  const unlockAt = unlockSchedule.unlockAt;
+  const unlockDisplay = useMemo(() => unlockAt ? formatUnlockAt(unlockAt, unlockTimezone) : null, [unlockAt, unlockTimezone]);
+  const draft = useBirthdayDraft(config, unlockAt, unlockTimezone);
 
   const update = useCallback(<K extends keyof BirthdayConfig>(key: K, value: BirthdayConfig[K]) => {
     setConfig((current) => ({ ...current, [key]: value }));
@@ -178,28 +203,29 @@ export function BirthdayCreator() {
   }, [config.music, update]);
 
   const validation = useMemo(() => {
+    if (unlockSchedule.error) return unlockSchedule.error;
     if (!config.recipientName.trim()) return 'Hãy nhập tên người nhận.';
     if (!Number.isFinite(config.age) || config.age < 1 || config.age > 120) return 'Tuổi phải nằm trong khoảng 1–120.';
     if (!config.birthday.trim()) return 'Hãy nhập ngày sinh.';
     if (!config.title.trim()) return 'Hãy nhập tiêu đề.';
     if (!config.wishes.some((wish) => wish.trim())) return 'Hãy viết ít nhất một lời chúc.';
     return null;
-  }, [config]);
+  }, [config, unlockSchedule.error]);
 
   const publish = useCallback(async () => {
     if (validation) { setPublishError(validation); return; }
     setPublishing(true);
     setPublishError(null);
     try {
-      const pageId = await draft.flush();
-      const slug = await publishBirthdayPage(pageId, structuredClone(config));
+      const pageId = await draft.flush(unlockAt, unlockTimezone);
+      const slug = await publishBirthdayPage(pageId, structuredClone(config), unlockAt, unlockTimezone);
       setShareUrl(`${window.location.origin}/?wish=${encodeURIComponent(slug)}`);
     } catch (reason) {
       setPublishError(reason instanceof Error ? reason.message : 'Không thể xuất bản trang.');
     } finally {
       setPublishing(false);
     }
-  }, [config, draft, validation]);
+  }, [config, draft, unlockAt, unlockTimezone, validation]);
 
   const copyShareUrl = useCallback(async () => {
     if (!shareUrl) return;
@@ -214,10 +240,34 @@ export function BirthdayCreator() {
     await webShare.call(navigator, { title: `Sinh nhật ${config.recipientName}`, url: shareUrl });
   }, [config.recipientName, shareUrl]);
 
+  const unlockEditorSection = (
+    <EditorSection title="Thời gian mở quà" icon={<CalendarClock />}>
+      <fieldset className="unlock-mode"><legend className="sr-only">Chế độ mở quà</legend>
+        <Button type="button" variant={unlockMode === 'now' ? 'default' : 'outline'} onClick={() => setUnlockMode('now')}>Mở ngay</Button>
+        <Button type="button" variant={unlockMode === 'scheduled' ? 'default' : 'outline'} onClick={() => setUnlockMode('scheduled')}>Mở theo lịch</Button>
+      </fieldset>
+      {unlockMode === 'scheduled' ? <>
+        <div className="creator-field-grid">
+          <Field label="Ngày mở" htmlFor="unlock-date"><Input id="unlock-date" type="date" value={unlockDate} onChange={(event) => setUnlockDate(event.target.value)} /></Field>
+          <Field label="Giờ mở" htmlFor="unlock-time"><Input id="unlock-time" type="time" step={60} value={unlockTime} onChange={(event) => setUnlockTime(event.target.value)} /></Field>
+        </div>
+        <Field label="Múi giờ" htmlFor="unlock-timezone">
+          <Select value={unlockTimezone} onValueChange={(value) => { if (value) setUnlockTimezone(value); }}>
+            <SelectTrigger id="unlock-timezone" className="creator-select"><SelectValue /></SelectTrigger>
+            <SelectContent>{SUPPORTED_TIME_ZONES.map((zone) => <SelectItem key={zone.value} value={zone.value}>{zone.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </Field>
+        {unlockDisplay ? <div className="unlock-preview"><span>Trang này sẽ được mở vào:</span><strong>{unlockDisplay.time} · {unlockDisplay.date}</strong><small>Múi giờ: {unlockDisplay.timeZoneLabel}</small></div> : null}
+        {unlockSchedule.error ? <p className="creator-error" role="alert">{unlockSchedule.error}</p> : null}
+      </> : <p className="unlock-now-copy">Trang sẽ mở ngay khi người nhận bắt đầu trải nghiệm.</p>}
+    </EditorSection>
+  );
+
   const editor = (
     <aside className="creator-editor" aria-label="Trình chỉnh sửa trang sinh nhật">
       <div className="creator-brand"><span><Sparkles /> Birthday Creator</span><SaveIndicator status={draft.status} error={draft.error} /></div>
       <div className="creator-scroll">
+        {unlockEditorSection}
         <EditorSection title="Thông tin" icon={<Sparkles />} open>
           <Field label="Tên người nhận" htmlFor="recipient-name"><Input id="recipient-name" value={config.recipientName} onChange={(event) => update('recipientName', event.target.value)} /></Field>
           <div className="creator-field-grid">
@@ -265,7 +315,7 @@ export function BirthdayCreator() {
           <p className="publish-copy">Trang đã gửi sẽ luôn dùng bản xuất bản gần nhất. Bạn vẫn có thể tiếp tục sửa bản nháp rồi xuất bản phiên bản mới.</p>
           {!draft.configured ? <p className="setup-note"><CloudOff /> Cần cấu hình Supabase để lưu và xuất bản.</p> : null}
           {publishError ? <p className="creator-error" role="alert">{publishError}</p> : null}
-          <Button className="publish-button" size="lg" onClick={() => void publish()} disabled={publishing || !draft.configured}>{publishing ? <LoaderCircle className="spin" /> : <Share2 />}{publishing ? 'Đang xuất bản...' : 'Xuất bản'}</Button>
+          <Button className="publish-button" size="lg" onClick={() => void publish()} disabled={publishing || !draft.configured || Boolean(validation)}>{publishing ? <LoaderCircle className="spin" /> : <Share2 />}{publishing ? 'Đang xuất bản...' : 'Xuất bản'}</Button>
         </EditorSection>
         {mediaError ? <p className="creator-error sticky-error" role="alert">{mediaError}</p> : null}
       </div>
