@@ -278,7 +278,10 @@ export async function uploadBirthdayAsset(options: {
   });
   if (error) throw error;
   const { data, error: signError } = await client.storage.from(BIRTHDAY_ASSETS_BUCKET).createSignedUrl(path, 60 * 60);
-  if (signError) throw signError;
+  if (signError) {
+    await client.storage.from(BIRTHDAY_ASSETS_BUCKET).remove([path]);
+    throw signError;
+  }
   return { path, signedUrl: data.signedUrl };
 }
 

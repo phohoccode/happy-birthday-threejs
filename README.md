@@ -6,6 +6,7 @@ Website sinh nhật tương tác 3D được xây dựng bằng React, Vinext, T
 
 - Birthday Experience cinematic với cake, candles, fireworks, memories và gift scene.
 - Scheduled Unlock: trang published có thể mở theo thời điểm và timezone đã chọn.
+- Birthday photos: mỗi trang được lưu và publish tối đa 3 ảnh kỷ niệm.
 - Guest Book / Wish Galaxy: khách gửi lời chúc, mỗi lời chúc trở thành một ngôi sao trong cảnh Three.js.
 - Realtime wishes, accessible fallback list/detail dialog, reduced-motion và tối ưu mobile.
 - Supabase RLS, RPC validation, server cooldown 15 giây và private birthday assets.
@@ -39,6 +40,8 @@ Mở **Supabase Dashboard → SQL Editor** và chạy [`supabase/schema.sql`](su
 - bucket private `birthday-assets` và storage policies.
 
 Nếu database đã có đầy đủ Guest Book objects và chỉ gặp lỗi PostgreSQL `42702`, chạy patch [`supabase/patches/fix_birthday_wish_ambiguity.sql`](supabase/patches/fix_birthday_wish_ambiguity.sql). Patch không drop bảng và không xóa dữ liệu.
+
+Nếu database đã có schema nhưng chưa có guard giới hạn ảnh ở RPC publish, chạy [`supabase/patches/enforce_birthday_photo_limit.sql`](supabase/patches/enforce_birthday_photo_limit.sql).
 
 Sau khi thay đổi public environment variables, phải chạy lại build vì giá trị được nhúng vào static export.
 

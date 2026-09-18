@@ -32,12 +32,12 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { BIRTHDAY_TEMPLATES, createBirthdayConfig, getGuestBookConfig, type BirthdayConfig, type BirthdayTemplateId, type Memory } from '@/config/birthday';
+import { BIRTHDAY_TEMPLATES, createBirthdayConfig, getBirthdayPhotoLimitError, getGuestBookConfig, MAX_BIRTHDAY_PHOTOS, type BirthdayConfig, type BirthdayTemplateId, type Memory } from '@/config/birthday';
 import { useBirthdayDraft } from '@/hooks/useBirthdayDraft';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { compressImage, validateAudio, validateImage } from '@/lib/media';
 import { DEFAULT_UNLOCK_TIME_ZONE, formatUnlockAt, isValidTimeZone, SUPPORTED_TIME_ZONES, zonedDateTimeToUtc } from '@/lib/unlock';
-import { publishBirthdayPage, uploadBirthdayAsset } from '@/lib/supabase/birthday-pages';
+import { deleteBirthdayAsset, publishBirthdayPage, uploadBirthdayAsset } from '@/lib/supabase/birthday-pages';
 
 type EditorSectionProps = {
   title: string;
@@ -78,7 +78,9 @@ export function BirthdayCreator() {
   const [unlockTimezone, setUnlockTimezone] = useState(DEFAULT_UNLOCK_TIME_ZONE);
   const [clockMs, setClockMs] = useState<number | null>(null);
   const [mobileTab, setMobileTab] = useState<'edit' | 'preview'>('edit');
-  const [uploading, setUploading] = useState(false);
+  const [pendingPhotoCount, setPendingPhotoCount] = useState(0);
+  const [pendingPhotoIds, setPendingPhotoIds] = useState<string[]>([]);
+  const [photoSlotCount, setPhotoSlotCount] = useState(() => config.memories.length);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -86,8 +88,14 @@ export function BirthdayCreator() {
   const [copied, setCopied] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
+  const photoSlotCountRef = useRef(config.memories.length);
+  const pendingPhotoIdsRef = useRef(new Set<string>());
+  const removedPhotoIdsRef = useRef(new Set<string>());
   const isMobile = useIsMobile();
   const guestBook = getGuestBookConfig(config);
+  const photoCount = Math.max(config.memories.length, photoSlotCount);
+  const photoLimitError = getBirthdayPhotoLimitError(config.memories.length);
+  const photoLimitReached = photoCount >= MAX_BIRTHDAY_PHOTOS;
   useEffect(() => {
     const timer = window.setTimeout(() => setClockMs(Date.now()), 0);
     return () => window.clearTimeout(timer);
@@ -122,15 +130,38 @@ export function BirthdayCreator() {
 
   const handlePhotos = useCallback(async (files: FileList | File[]) => {
     const selected = Array.from(files);
-    const validationError = selected.map(validateImage).find(Boolean);
-    if (validationError) { setMediaError(validationError); return; }
     if (!selected.length) return;
+    const validFiles: File[] = [];
+    let invalidCount = 0;
+    selected.forEach((file) => {
+      if (validateImage(file)) invalidCount += 1;
+      else validFiles.push(file);
+    });
+    if (!validFiles.length) {
+      setMediaError(invalidCount ? 'Các tệp đã chọn không phải là ảnh JPG, PNG hoặc WebP hợp lệ.' : 'Hãy chọn ít nhất một ảnh.');
+      return;
+    }
     if (draft.configured && !draft.userId) { setMediaError('Đang kết nối tài khoản ẩn danh, vui lòng thử lại sau một chút.'); return; }
-    setMediaError(null);
-    setUploading(true);
+    const remainingSlots = MAX_BIRTHDAY_PHOTOS - photoSlotCountRef.current;
+    if (remainingSlots <= 0) {
+      setMediaError(`Bạn đã thêm đủ ${MAX_BIRTHDAY_PHOTOS} ảnh. Xóa một ảnh trước khi thêm ảnh mới.`);
+      return;
+    }
+    const acceptedFiles = validFiles.slice(0, remainingSlots);
+    const skippedCount = validFiles.length - acceptedFiles.length;
+    const notices = [
+      invalidCount ? `${invalidCount} tệp không hợp lệ đã được bỏ qua.` : '',
+      skippedCount ? `Mỗi trang sinh nhật chỉ có thể sử dụng tối đa ${MAX_BIRTHDAY_PHOTOS} ảnh.` : '',
+    ].filter(Boolean);
+    setMediaError(notices.length ? notices.join(' ') : null);
+    photoSlotCountRef.current += acceptedFiles.length;
+    setPhotoSlotCount(photoSlotCountRef.current);
+    setPendingPhotoCount((count) => count + acceptedFiles.length);
     let temporary: Memory[] = [];
+    const uploaded: Array<{ path: string; signedUrl: string }> = [];
+    let keepPhotos = !draft.configured;
     try {
-      const compressed = await Promise.all(selected.map(compressImage));
+      const compressed = await Promise.all(acceptedFiles.map(compressImage));
       temporary = compressed.map((file) => ({
         id: crypto.randomUUID(),
         src: URL.createObjectURL(file),
@@ -138,11 +169,15 @@ export function BirthdayCreator() {
         caption: file.name.replace(/\.[^.]+$/, ''),
       } satisfies Memory));
       setConfig((current) => ({ ...current, memories: [...current.memories, ...temporary] }));
+      temporary.forEach((memory) => pendingPhotoIdsRef.current.add(memory.id));
+      setPendingPhotoIds((current) => [...current, ...temporary.map((memory) => memory.id)]);
 
       if (!draft.configured) return;
       const pageId = await draft.ensurePage();
       if (!draft.userId) throw new Error('Đang tạo phiên ẩn danh, vui lòng thử lại sau một chút.');
-      const uploaded = await Promise.all(compressed.map((file) => uploadBirthdayAsset({ userId: draft.userId!, pageId, folder: 'photos', file })));
+      for (const file of compressed) {
+        uploaded.push(await uploadBirthdayAsset({ userId: draft.userId, pageId, folder: 'photos', file }));
+      }
       setConfig((current) => ({
         ...current,
         memories: current.memories.map((memory) => {
@@ -152,12 +187,21 @@ export function BirthdayCreator() {
           return { ...memory, src: uploaded[index].signedUrl, storagePath: uploaded[index].path };
         }),
       }));
+      keepPhotos = true;
     } catch (reason) {
+      if (uploaded.length) await Promise.allSettled(uploaded.map((asset) => deleteBirthdayAsset(asset.path)));
       temporary.forEach((memory) => URL.revokeObjectURL(memory.src));
-      if (temporary.length) setConfig((current) => ({ ...current, memories: current.memories.filter((item) => !temporary.some((added) => added.id === item.id)) }));
       setMediaError(reason instanceof Error ? reason.message : 'Không thể tải ảnh lên.');
     } finally {
-      setUploading(false);
+      if (!keepPhotos) {
+        photoSlotCountRef.current = Math.max(0, photoSlotCountRef.current - acceptedFiles.length);
+        setPhotoSlotCount(photoSlotCountRef.current);
+        if (temporary.length) setConfig((current) => ({ ...current, memories: current.memories.filter((item) => !temporary.some((added) => added.id === item.id)) }));
+      }
+      const temporaryIds = new Set(temporary.map((memory) => memory.id));
+      temporaryIds.forEach((id) => pendingPhotoIdsRef.current.delete(id));
+      if (temporaryIds.size) setPendingPhotoIds((current) => current.filter((id) => !temporaryIds.has(id)));
+      setPendingPhotoCount((count) => Math.max(0, count - acceptedFiles.length));
     }
   }, [draft]);
 
@@ -172,6 +216,11 @@ export function BirthdayCreator() {
   }, []);
 
   const removeMemory = useCallback((memory: Memory) => {
+    if (pendingPhotoIdsRef.current.has(memory.id)) return;
+    if (removedPhotoIdsRef.current.has(memory.id)) return;
+    removedPhotoIdsRef.current.add(memory.id);
+    photoSlotCountRef.current = Math.max(0, photoSlotCountRef.current - 1);
+    setPhotoSlotCount(photoSlotCountRef.current);
     setConfig((current) => ({ ...current, memories: current.memories.filter((item) => item.id !== memory.id) }));
     if (memory.src.startsWith('blob:')) URL.revokeObjectURL(memory.src);
   }, []);
@@ -182,7 +231,6 @@ export function BirthdayCreator() {
     if (validationError) { setMediaError(validationError); return; }
     if (draft.configured && !draft.userId) { setMediaError('Đang kết nối tài khoản ẩn danh, vui lòng thử lại sau một chút.'); return; }
     setMediaError(null);
-    setUploading(true);
     const previousMusic = config.music;
     const temporaryUrl = URL.createObjectURL(file);
     setConfig((current) => ({ ...current, music: { src: temporaryUrl, name: file.name, volume: current.music?.volume ?? 0.35 } }));
@@ -197,8 +245,6 @@ export function BirthdayCreator() {
       URL.revokeObjectURL(temporaryUrl);
       setConfig((current) => current.music?.src === temporaryUrl ? { ...current, music: previousMusic } : current);
       setMediaError(reason instanceof Error ? reason.message : 'Không thể tải nhạc lên.');
-    } finally {
-      setUploading(false);
     }
   }, [config.music, draft]);
 
@@ -210,6 +256,8 @@ export function BirthdayCreator() {
 
   const validation = useMemo(() => {
     if (unlockSchedule.error) return unlockSchedule.error;
+    const photoLimitError = getBirthdayPhotoLimitError(config.memories.length);
+    if (photoLimitError) return photoLimitError;
     if (!config.recipientName.trim()) return 'Hãy nhập tên người nhận.';
     if (!Number.isFinite(config.age) || config.age < 1 || config.age > 120) return 'Tuổi phải nằm trong khoảng 1–120.';
     if (!config.birthday.trim()) return 'Hãy nhập ngày sinh.';
@@ -285,11 +333,13 @@ export function BirthdayCreator() {
         </EditorSection>
 
         <EditorSection title="Ảnh" icon={<ImagePlus />}>
-          <button className="upload-dropzone" type="button" onClick={() => photoInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void handlePhotos(event.dataTransfer.files); }}>
-            {uploading ? <LoaderCircle className="spin" /> : <Upload />}<strong>Thả ảnh vào đây</strong><span>hoặc chọn nhiều ảnh · JPG, PNG, WebP · tối đa 10 MB</span>
+          <div className="photo-limit-row"><span>Ảnh kỷ niệm</span><strong>{photoCount} / {MAX_BIRTHDAY_PHOTOS} ảnh</strong></div>
+          <button className="upload-dropzone" type="button" disabled={photoLimitReached} onClick={() => photoInput.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void handlePhotos(event.dataTransfer.files); }}>
+            {pendingPhotoCount ? <LoaderCircle className="spin" /> : photoLimitReached ? <Check /> : <Upload />}<strong>{photoLimitError ? 'Cần xóa bớt ảnh' : photoLimitReached ? `Đã đủ ${MAX_BIRTHDAY_PHOTOS} ảnh` : 'Thả ảnh vào đây'}</strong><span>{pendingPhotoCount ? `Đang tải ${pendingPhotoCount} ảnh...` : photoLimitReached ? `Bạn đã thêm đủ ${MAX_BIRTHDAY_PHOTOS} ảnh.` : 'hoặc chọn nhiều ảnh · JPG, PNG, WebP · tối đa 10 MB'}</span>
           </button>
           <input ref={photoInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { void handlePhotos(event.target.files ?? []); event.target.value = ''; }} />
-          <div className="photo-list">{config.memories.map((memory, index) => <div className="photo-item" key={memory.id}><img src={memory.src} alt="" /><div><Input aria-label={`Chú thích ảnh ${index + 1}`} value={memory.caption} onChange={(event) => setConfig((current) => ({ ...current, memories: current.memories.map((item) => item.id === memory.id ? { ...item, caption: event.target.value } : item) }))} /><div className="photo-actions"><Button variant="ghost" size="icon-sm" onClick={() => moveMemory(index, -1)} disabled={index === 0} aria-label="Đưa ảnh lên"><ArrowUp /></Button><Button variant="ghost" size="icon-sm" onClick={() => moveMemory(index, 1)} disabled={index === config.memories.length - 1} aria-label="Đưa ảnh xuống"><ArrowDown /></Button><Button variant="ghost" size="icon-sm" onClick={() => removeMemory(memory)} aria-label="Xóa ảnh"><Trash2 /></Button></div></div></div>)}</div>
+          {photoLimitError ? <p className="creator-error" role="alert">{photoLimitError}</p> : null}
+          <div className="photo-list">{config.memories.map((memory, index) => <div className="photo-item" key={memory.id}><img src={memory.src} alt="" /><div><Input aria-label={`Chú thích ảnh ${index + 1}`} value={memory.caption} onChange={(event) => setConfig((current) => ({ ...current, memories: current.memories.map((item) => item.id === memory.id ? { ...item, caption: event.target.value } : item) }))} /><div className="photo-actions"><Button variant="ghost" size="icon-sm" onClick={() => moveMemory(index, -1)} disabled={index === 0} aria-label="Đưa ảnh lên"><ArrowUp /></Button><Button variant="ghost" size="icon-sm" onClick={() => moveMemory(index, 1)} disabled={index === config.memories.length - 1} aria-label="Đưa ảnh xuống"><ArrowDown /></Button><Button variant="ghost" size="icon-sm" onClick={() => removeMemory(memory)} disabled={pendingPhotoIds.includes(memory.id)} aria-label="Xóa ảnh"><Trash2 /></Button></div></div></div>)}</div>
         </EditorSection>
 
         <EditorSection title="Lời chúc" icon={<Sparkles />}>

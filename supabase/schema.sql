@@ -137,6 +137,12 @@ begin
    where page.id = page_uuid
      and page.owner_id = auth.uid();
   if recipient is null then raise exception 'Birthday page not found or access denied'; end if;
+  if jsonb_typeof(coalesce(config_snapshot -> 'memories', '[]'::jsonb)) <> 'array' then
+    raise exception 'Birthday page memories must be an array';
+  end if;
+  if jsonb_array_length(coalesce(config_snapshot -> 'memories', '[]'::jsonb)) > 3 then
+    raise exception 'Birthday page can contain at most 3 photos';
+  end if;
   if unlock_zone is null or not exists (select 1 from pg_timezone_names where name = unlock_zone) then
     raise exception 'Invalid unlock timezone';
   end if;

@@ -5,12 +5,14 @@ import { ChevronLeft, ChevronRight, Expand } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import type { Memory } from '@/config/birthday';
+import { MAX_BIRTHDAY_PHOTOS, type Memory } from '@/config/birthday';
 
 export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
+  const visibleMemories = memories.slice(0, MAX_BIRTHDAY_PHOTOS);
   const [selected, setSelected] = useState<number | null>(null);
   const touchStart = useRef(0);
-  const step = useCallback((direction: number) => setSelected((value) => value === null ? null : (value + direction + memories.length) % memories.length), [memories.length]);
+  const step = useCallback((direction: number) => setSelected((value) => value === null || !visibleMemories.length ? null : (value + direction + visibleMemories.length) % visibleMemories.length), [visibleMemories.length]);
+  const selectedMemory = selected === null ? null : visibleMemories[selected] ?? null;
 
   useEffect(() => {
     if (selected === null) return;
@@ -29,12 +31,12 @@ export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
         <h2 id="memories-title">Our Memories</h2>
         <p>Một dải ký ức nhỏ, vẫn đang lấp lánh ở đâu đó.</p>
       </div>
-      <div className={`memory-orbit ${memories.length > 3 ? 'is-gallery' : ''}`}>
+      <div className={`memory-orbit ${visibleMemories.length > MAX_BIRTHDAY_PHOTOS ? 'is-gallery' : ''}`}>
         <svg className="constellation-lines" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
           <path d="M120 270 C 290 70, 410 95, 500 190 S 760 240, 885 360" />
           <path d="M500 190 C 510 320, 420 410, 350 520" />
         </svg>
-        {memories.map((memory, index) => (
+        {visibleMemories.map((memory, index) => (
           <button
             type="button"
             className={`memory-card memory-card-${index + 1}`}
@@ -48,8 +50,8 @@ export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
         ))}
       </div>
       <div className="constellation-heart" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /><i /><span /></div>
-      <Dialog open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null); }}>
-        {selected !== null ? (
+      <Dialog open={selectedMemory !== null} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        {selectedMemory ? (
           <DialogContent
             className="memory-dialog"
             onTouchStart={(event) => { touchStart.current = event.touches[0]?.clientX ?? 0; }}
@@ -58,9 +60,9 @@ export function MemoryGalaxy({ memories }: { memories: readonly Memory[] }) {
               if (Math.abs(distance) > 48) step(distance > 0 ? -1 : 1);
             }}
           >
-            <DialogTitle className="sr-only">Kỷ niệm {selected + 1}</DialogTitle>
-            <img src={memories[selected].src} alt={memories[selected].alt} decoding="async" width="768" height="960" />
-            <DialogDescription>{memories[selected].caption}</DialogDescription>
+            <DialogTitle className="sr-only">Kỷ niệm {selected !== null ? selected + 1 : ''}</DialogTitle>
+            <img src={selectedMemory.src} alt={selectedMemory.alt} decoding="async" width="768" height="960" />
+            <DialogDescription>{selectedMemory.caption}</DialogDescription>
             <Button variant="ghost" size="icon-lg" className="memory-nav memory-prev" onClick={() => step(-1)} aria-label="Ảnh trước"><ChevronLeft /></Button>
             <Button variant="ghost" size="icon-lg" className="memory-nav memory-next" onClick={() => step(1)} aria-label="Ảnh sau"><ChevronRight /></Button>
           </DialogContent>

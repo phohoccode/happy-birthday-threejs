@@ -8,6 +8,13 @@ export const BIRTHDAY_TEMPLATES = [
 
 export type BirthdayTemplateId = (typeof BIRTHDAY_TEMPLATES)[number]['id'];
 
+export const MAX_BIRTHDAY_PHOTOS = 3;
+
+export function getBirthdayPhotoLimitError(photoCount: number) {
+  if (photoCount <= MAX_BIRTHDAY_PHOTOS) return null;
+  return `Trang sinh nhật chỉ được sử dụng tối đa ${MAX_BIRTHDAY_PHOTOS} ảnh. Vui lòng xóa bớt ảnh trước khi xuất bản.`;
+}
+
 export type Memory = {
   id: string;
   src: string;

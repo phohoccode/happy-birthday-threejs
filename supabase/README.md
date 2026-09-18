@@ -3,6 +3,7 @@
 1. Create a Supabase project and enable **Anonymous Sign-Ins** in Authentication → Providers.
 2. Open SQL Editor and run `schema.sql`. It creates or upgrades `birthday_pages`, `birthday_wishes`, the publish/locked-viewer and Guest Book RPCs, RLS policies, Realtime publication, and the private `birthday-assets` bucket. Re-run it after pulling schema changes so all Guest Book and Scheduled Unlock functions are installed.
    For an existing database that already has the Guest Book objects, the focused ambiguity fix is available at `patches/fix_birthday_wish_ambiguity.sql`; it replaces only functions and policies, without dropping tables or data.
+   The publish-only photo-limit patch is available at `patches/enforce_birthday_photo_limit.sql` when the base schema is already installed.
 3. Copy `.env.example` to `.env.local`, then add the Project URL and publishable key. Never use a secret or service-role key in this app.
 4. Run `npm run build` again after changing public environment variables. This is a static export, so the values are embedded at build time.
 

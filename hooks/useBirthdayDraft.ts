@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { BirthdayConfig } from '@/config/birthday';
+import { getBirthdayPhotoLimitError, type BirthdayConfig } from '@/config/birthday';
 import { createDraft, ensureAnonymousUser, saveDraft } from '@/lib/supabase/birthday-pages';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { DEFAULT_UNLOCK_TIME_ZONE } from '@/lib/unlock';
@@ -42,6 +42,8 @@ export function useBirthdayDraft(config: BirthdayConfig, unlockAt: string | null
   }, [configured]);
 
   const ensurePage = useCallback(async (snapshot = latestConfigRef.current, unlockSnapshot = latestUnlockAtRef.current, timezoneSnapshot = latestUnlockTimezoneRef.current) => {
+    const photoLimitError = getBirthdayPhotoLimitError(snapshot.memories.length);
+    if (photoLimitError) throw new Error(photoLimitError);
     if (pageIdRef.current) return pageIdRef.current;
     if (!userId) throw new Error('Phiên ẩn danh chưa sẵn sàng.');
     if (!creatingRef.current) {
@@ -61,6 +63,12 @@ export function useBirthdayDraft(config: BirthdayConfig, unlockAt: string | null
       setStatus('saving');
       setError(null);
       const snapshot = structuredClone(latestConfigRef.current);
+      const photoLimitError = getBirthdayPhotoLimitError(snapshot.memories.length);
+      if (photoLimitError) {
+        setStatus('error');
+        setError(photoLimitError);
+        return;
+      }
       saveChainRef.current = saveChainRef.current
         .catch(() => undefined)
         .then(async () => {
@@ -82,6 +90,12 @@ export function useBirthdayDraft(config: BirthdayConfig, unlockAt: string | null
     if (!configured) throw new Error('Hãy thêm biến môi trường Supabase trước khi xuất bản.');
     setStatus('saving');
     const snapshot = structuredClone(latestConfigRef.current);
+    const photoLimitError = getBirthdayPhotoLimitError(snapshot.memories.length);
+    if (photoLimitError) {
+      setStatus('error');
+      setError(photoLimitError);
+      throw new Error(photoLimitError);
+    }
     await saveChainRef.current.catch(() => undefined);
     const id = await ensurePage(snapshot, unlockSnapshot, timezoneSnapshot);
     await saveDraft(id, snapshot, unlockSnapshot, timezoneSnapshot);
